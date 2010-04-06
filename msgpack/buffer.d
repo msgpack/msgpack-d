@@ -3,7 +3,7 @@
 /**
  * MessagePack for D, some buffer implementation
  *
- * Buffer
+ * Buffer list
  *  - SimpleBuffer
  *  - DeflationBuffer
  *  - VRefBuffer
@@ -15,7 +15,7 @@
  */
 module msgpack.buffer;
 
-import std.stdio : File;
+import std.stdio : File, StdioException;
 import std.zlib  : ZlibException;
 
 import etc.c.zlib;
@@ -38,17 +38,25 @@ else
 
 
 /**
- * $(D Buffer) is a interface for byte stream
+ * $(D SimpleBuffer) is a wrapper for $(D ubyte[])
  */
-interface Buffer
+struct SimpleBuffer
 {
+  private:
+    ubyte[] data_;  // internal buffer
+
+
+  public:
     /**
      * Forwards to buffer content.
      *
      * Returns:
      *  the available content of buffer.
      */
-    @property ubyte[] data();
+    @property nothrow ubyte[] data()
+    {
+        return data_;
+    }
 
     /**
      * Writes $(D_PARAM value) to buffer.
@@ -56,39 +64,12 @@ interface Buffer
      * Params:
      *  value = the content to write.
      */
-    void write(in ubyte value);
-
-    /**
-     * ditto
-     */
-    void write(in ubyte[] values)
-    in
-    {
-        assert(values);
-    }
-}
-
-
-/**
- * $(D SimpleBuffer) is a wrapper for ubyte array
- */
-class SimpleBuffer : Buffer
-{
-  private:
-    ubyte[] data_;  // internal buffer
-
-
-  public:
-    @property nothrow ubyte[] data()
-    {
-        return data_;
-    }
-
     void write(in ubyte value)
     {
         data_ ~= value;
     }
 
+    /// ditto
     void write(in ubyte[] values)
     {
         data_ ~= values;
@@ -98,7 +79,7 @@ class SimpleBuffer : Buffer
 
 unittest
 {
-    auto buffer = new SimpleBuffer;
+    SimpleBuffer buffer;
 
     ubyte[] tests = [1, 2];
 
@@ -117,13 +98,13 @@ unittest
  * NOTE:
  *  $(D DeflationBuffer) corresponds to zbuffer of original msgpack.
  */
-class DeflationBuffer : Buffer
+struct DeflationBuffer
 {
   private:
     enum uint RESERVE_SIZE = 512;
 
     ubyte[]  data_;    // interface buffer
-    z_stream stream_;  // zlib stream for deflation
+    z_stream stream_;  // zlib-stream for deflation
 
 
   public:
@@ -135,9 +116,9 @@ class DeflationBuffer : Buffer
      *  bufferSize = Initial-value of buffer content.
      *
      * Throws:
-     *  ZlibException, if initialization of deflation-stream failed.
+     *  $(D ZlibException), if initialization of deflation-stream failed.
      */
-    this(in int level = Z_DEFAULT_COMPRESSION, in size_t bufferSize = RESERVE_SIZE * 4)
+    this(in int level = Z_DEFAULT_COMPRESSION, in size_t bufferSize = 8192)
     in
     {
         assert(level == Z_NO_COMPRESSION   ||
@@ -162,13 +143,19 @@ class DeflationBuffer : Buffer
         deflateEnd(&stream_);
     }
 
+    /**
+     * Forwards to buffer content.
+     *
+     * Returns:
+     *  the available content of buffer.
+     */
     @property nothrow ubyte[] data()
     {
         return data_[0..stream_.next_out - data_.ptr];
     }
 
     /**
-     * Flushes the deflation stream.
+     * Flushes the deflation-stream.
      *
      * Returns:
      *  the buffer content if succeed, otherwise null.
@@ -189,10 +176,10 @@ class DeflationBuffer : Buffer
     }
 
     /**
-     * Resets the deflation stream, but some state will keep.
+     * Resets the deflation-stream, but some state will keep.
      *
      * Throws:
-     *  ZlibException, if reset of deflation-stream failed.
+     *  $(D ZlibException), if reset of deflation-stream failed.
      */
     void reset()
     {
@@ -209,7 +196,7 @@ class DeflationBuffer : Buffer
      *  value = the content to write.
      *
      * Throws:
-     *  ZlibException, if deflation failed.
+     *  $(D ZlibException), if deflation failed.
      */
     void write(in ubyte value)
     {
@@ -217,9 +204,7 @@ class DeflationBuffer : Buffer
         write(values);
     }
 
-    /**
-     * ditto
-     */
+    /// ditto
     void write(in ubyte[] values)
     {
         stream_.next_in  = cast(ubyte*)values.ptr;
@@ -242,7 +227,7 @@ class DeflationBuffer : Buffer
      *  status = return code from zlib function.
      *
      * Throws:
-     *  ZlibException, if $(D_PARAM status) isn't $(D_Z_OK).
+     *  $(D ZlibException), if $(D_PARAM status) isn't $(D Z_OK).
      */
     void check(in int status)
     {
@@ -265,6 +250,22 @@ class DeflationBuffer : Buffer
 }
 
 
+/**
+ * Helper for $(D DeflationBuffer) construction.
+ *
+ * Params:
+ *  level      = Compression level for deflation.
+ *  bufferSize = Initial-value of buffer content.
+ *
+ * Throws:
+ *  $(D ZlibException), if initialization of deflation-stream failed.
+ */
+DeflationBuffer deflationBuffer(in int level = Z_DEFAULT_COMPRESSION, in size_t bufferSize = 8192)
+{
+    return typeof(return)(level, bufferSize);
+}
+
+
 unittest
 {
     void check(in int status)
@@ -273,7 +274,7 @@ unittest
             throw new ZlibException(status);
     }
 
-    scope buffer = new DeflationBuffer;
+    scope buffer = deflationBuffer();
 
     // deflation
     ubyte[] tests = [1, 2];
@@ -312,7 +313,7 @@ unittest
  *  This is better but not fastest? malloc(3) has fastbins at 72 byte align,
  *  but dynamic-array relies on GC.
  */
-class VRefBuffer : Buffer
+struct VRefBuffer
 {
   private:
     immutable size_t RefSize, ChunkSize;
@@ -323,7 +324,7 @@ class VRefBuffer : Buffer
     size_t    index_;  // index for cunrrent chunk
 
     // for writeRef
-    iovec[] vector_;   // referece to large data or copied data.
+    iovec[] vecList_;   // referece to large data or copied data.
 
 
   public:
@@ -331,7 +332,7 @@ class VRefBuffer : Buffer
      * Constructs a buffer.
      *
      * Params:
-     *  refSize   = the threshold for writing value or reference to buffer.
+     *  refSize   = the threshold of writing value or stores reference.
      *  chunkSize = the default size of chunk for allocation.
      */
     this(in size_t refSize = 32, in size_t chunkSize = 8192)
@@ -364,19 +365,32 @@ class VRefBuffer : Buffer
      * Forwards to all buffer contents.
      *
      * Returns:
-     *  the array of iovec struct that references the contents.
+     *  the array of iovec struct that stores references.
      */
     @property nothrow iovec[] vector()
     {
-        return vector_;
+        return vecList_;
     }
 
+    /**
+     * Writes $(D_PARAM value) to buffer.
+     *
+     * Params:
+     *  value = the content to write.
+     */
     void write(in ubyte value)
     {
         ubyte[1] values = [value];
         writeCopy(values);
     }
 
+    /**
+     * Writes $(D_PARAM values) to buffer if $(D_PARAM values) size is smaller
+     * than RefSize, otherwise stores reference of $(D_PARAM values).
+     *
+     * Params:
+     *  values = the content to write.
+     */
     void write(in ubyte[] values)
     {
         if (values.length < RefSize)
@@ -388,15 +402,15 @@ class VRefBuffer : Buffer
 
   private:
     /**
-     * Writes reference of $(D_PARAM values) to buffer.
+     * Stores reference of $(D_PARAM values).
      *
      * Params:
      *  values = the content to write.
      */
     void writeRef(in ubyte[] values)
     {
-        vector_.length += 1;
-        vector_[$ - 1]  = iovec(cast(void*)values.ptr, values.length);
+        vecList_.length += 1;
+        vecList_[$ - 1]  = iovec(cast(void*)values.ptr, values.length);
     }
 
     /**
@@ -433,14 +447,14 @@ class VRefBuffer : Buffer
         uList_[index_] += size;
 
         // Optimization for avoiding iovec allocation.
-        if (vector_.length && data.ptr == (vector_[$ - 1].iov_base +
-                                           vector_[$ - 1].iov_len))
-            vector_[$ - 1].iov_len += size;
+        if (vecList_.length && data.ptr == (vecList_[$ - 1].iov_base +
+                                           vecList_[$ - 1].iov_len))
+            vecList_[$ - 1].iov_len += size;
         else
             writeRef(data);
     }
 
-    /**
+    /*
      * Not implemented bacause use case is rarity.
      *
     void migrate(VRefBuffer to);
@@ -448,9 +462,22 @@ class VRefBuffer : Buffer
 }
 
 
+/**
+ * Helper for $(D VRefBuffer) construction.
+ *
+ * Params:
+ *  refSize   = the threshold of writing value or storing reference.
+ *  chunkSize = the default size of chunk for allocation.
+ */
+VRefBuffer vrefBuffer(in size_t refSize = 32, in size_t chunkSize = 8192)
+{
+    return typeof(return)(refSize, chunkSize);
+}
+
+
 unittest
 {
-    auto buffer = new VRefBuffer(2, 4);
+    auto buffer = vrefBuffer(2, 4);
 
     ubyte[] tests = [1, 2];
     foreach (v; tests)
@@ -472,12 +499,12 @@ unittest
 
 
 /**
- * FileBuffer is a wrapper for std.stdio.File
+ * $(D FileBuffer) is a wrapper for $(LINK2 http://www.digitalmars.com/d/2.0/phobos/std_stdio.html#File, File)
  *
- * Phobos doesn't have integrated stream(std.stream will be eliminated?).
- * I strongly want the stream implemented Range(File, Socket, etc...).
+ * Phobos doesn't have integrated stream($(D std.stream) will be eliminated?).
+ * I strongly want the stream implemented Range.
  */
-class FileBuffer : Buffer
+struct FileBuffer
 {
   private:
     File*        file_;     // stream to write
@@ -490,15 +517,13 @@ class FileBuffer : Buffer
      * Constructs a buffer.
      *
      * Params:
-     *  file    = the pointer to File.
-     *  isCache = caches content if true.
+     *  file    = the pointer to $(D File).
+     *  isCache = caching content if true.
      */
     this(File* file, bool isCache = false)
     {
         file_    = file;
         isCache_ = isCache;
-        if (isCache)
-            cache_ = new SimpleBuffer;
     }
 
     /**
@@ -512,19 +537,45 @@ class FileBuffer : Buffer
         return isCache_ ? cache_.data : null;
     }
 
+    /**
+     * Writes $(D_PARAM value) to buffer.
+     *
+     * Params:
+     *  value = the content to write.
+     *
+     * Throws:
+     *  $(D StdioException) if file closed.
+     */
     void write(in ubyte value)
     {
         ubyte[1] values = [value];
         write(values);
     }
 
+    /// ditto
     void write(in ubyte[] values)
     {
         if (isCache_)
             cache_.write(values);
 
-        file_.rawWrite(values);
+        if (file_.isOpen)
+            file_.rawWrite(values);
+        else
+            throw new StdioException("File has been closed", 5);  // EIO
     }
+}
+
+
+/**
+ * Helper for $(D FileBuffer) construction.
+ *
+ * Params:
+ *  file    = the pointer to $(D File).
+ *  isCache = caching content if true.
+ */
+FileBuffer fileBuffer(File* file, bool isCache = false)
+{
+    return typeof(return)(file, isCache);
 }
 
 
@@ -537,7 +588,7 @@ unittest
 
     { // output to name file
         auto output = File(name, "wb");
-        auto buffer = new FileBuffer(&output, true);
+        auto buffer = fileBuffer(&output, true);
 
         foreach (v; tests)
             buffer.write(v);
@@ -558,7 +609,8 @@ unittest
 }
 
 
-/**
- * $(D SocketBuffer) is a wrapper for Socket
-class SocketBuffer : Buffer {}
+/*
+ * $(D SocketBuffer) is a wrapper for $(D Socket).
+ *
+ * Phobos's socket is broken!
  */
