@@ -15,14 +15,14 @@
  */
 module msgpack.buffer;
 
-import std.stdio : File, StdioException;
-import std.zlib  : ZlibException;
+import std.stdio;
+import std.zlib : ZlibException;  // avoiding Z_* symbols conflict
 
 import etc.c.zlib;
 
 version(Posix)
 {
-    public import core.sys.posix.sys.uio : iovec;
+    import core.sys.posix.sys.uio : iovec;
 }
 else
 {
