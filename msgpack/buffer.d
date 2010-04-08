@@ -58,6 +58,7 @@ struct SimpleBuffer
         return data_;
     }
 
+
     /**
      * Writes $(D_PARAM value) to buffer.
      *
@@ -68,6 +69,7 @@ struct SimpleBuffer
     {
         data_ ~= value;
     }
+
 
     /// ditto
     void write(in ubyte[] values)
@@ -135,6 +137,7 @@ struct DeflationBuffer
         stream_.avail_out = bufferSize;
     }
 
+
     /**
      * Destructs a buffer.
      */
@@ -142,6 +145,7 @@ struct DeflationBuffer
     {
         deflateEnd(&stream_);
     }
+
 
     /**
      * Forwards to buffer content.
@@ -153,6 +157,7 @@ struct DeflationBuffer
     {
         return data_[0..stream_.next_out - data_.ptr];
     }
+
 
     /**
      * Flushes the deflation-stream.
@@ -175,6 +180,7 @@ struct DeflationBuffer
         }
     }
 
+
     /**
      * Resets the deflation-stream, but some state will keep.
      *
@@ -188,6 +194,7 @@ struct DeflationBuffer
         stream_.avail_out += stream_.next_out - data_.ptr;
         stream_.next_out   = data_.ptr;
     }
+
 
     /**
      * Writes $(D_PARAM value) to buffer with deflation.
@@ -203,6 +210,7 @@ struct DeflationBuffer
         ubyte[1] values = [value];
         write(values);
     }
+
 
     /// ditto
     void write(in ubyte[] values)
@@ -234,6 +242,7 @@ struct DeflationBuffer
         if (status != Z_OK)
             throw new ZlibException(status);
     }
+
 
     /**
      * Expands internal buffer.
@@ -278,6 +287,7 @@ unittest
 
     // deflation
     ubyte[] tests = [1, 2];
+
     foreach (v; tests)
         buffer.write(v);
     buffer.write(tests);
@@ -345,6 +355,7 @@ struct VRefBuffer
         chunk_[index_].length = chunkSize;
     }
 
+
     /**
      * Forwards to buffer contents excluding references.
      *
@@ -361,6 +372,7 @@ struct VRefBuffer
         return result;
     }
 
+
     /**
      * Forwards to all buffer contents.
      *
@@ -371,6 +383,7 @@ struct VRefBuffer
     {
         return vecList_;
     }
+
 
     /**
      * Writes $(D_PARAM value) to buffer.
@@ -383,6 +396,7 @@ struct VRefBuffer
         ubyte[1] values = [value];
         writeCopy(values);
     }
+
 
     /**
      * Writes $(D_PARAM values) to buffer if $(D_PARAM values) size is smaller
@@ -412,6 +426,7 @@ struct VRefBuffer
         vecList_.length += 1;
         vecList_[$ - 1]  = iovec(cast(void*)values.ptr, values.length);
     }
+
 
     /**
      * Writes $(D_PARAM values) to buffer and appends to reference.
@@ -454,8 +469,9 @@ struct VRefBuffer
             writeRef(data);
     }
 
+
     /*
-     * Not implemented bacause use case is rarity.
+     * Not implemented yet bacause use case is rarity.
      *
     void migrate(VRefBuffer to);
      */
@@ -526,6 +542,7 @@ struct FileBuffer
         isCache_ = isCache;
     }
 
+
     /**
      * Forwards to cache contents.
      *
@@ -536,6 +553,7 @@ struct FileBuffer
     {
         return isCache_ ? cache_.data : null;
     }
+
 
     /**
      * Writes $(D_PARAM value) to buffer.
@@ -551,6 +569,7 @@ struct FileBuffer
         ubyte[1] values = [value];
         write(values);
     }
+
 
     /// ditto
     void write(in ubyte[] values)
