@@ -281,7 +281,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
                 store_[0] = Format.INT32;
                 *cast(int*)&store_[Offset] = temp;
                 buffer_.write(store_[0..Offset + int.sizeof]);
-            } else if ( -(1 << 7)) {
+            } else if (value < -(1 << 7)) {
                 // int 16
                 const temp = convertEndianTo!16(value);
 
@@ -589,6 +589,172 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 Packer!(Buffer) packer(Buffer)(Buffer buffer)
 {
     return typeof(return)(buffer);
+}
+
+
+version (unittest) 
+{
+    import msgpack.buffer;
+
+    import std.c.string;
+
+    mixin template DefinePacker()
+    {
+        SimpleBuffer buffer; Packer!(SimpleBuffer*) packer = packer(&buffer);
+    }
+}
+
+unittest
+{
+    { // unique value
+        mixin DefinePacker;
+
+        ubyte[] result = [Format.NIL, Format.TRUE, Format.FALSE,
+                                      Format.TRUE, Format.FALSE];
+
+        packer.packNil().packTrue().packFalse().pack(true).pack(false);
+        foreach (i, value; packer.buffer.data)
+            assert(value == result[i]);
+    }
+    { // uint *
+        struct UTest { ubyte format; ulong value; }
+
+        enum : ulong { A = ubyte.max, B = ushort.max, C = uint.max, D = ulong.max }
+
+        static UTest[][] tests = [
+            [{Format.UINT8, A}], 
+            [{Format.UINT8, A}, {Format.UINT16, B}],
+            [{Format.UINT8, A}, {Format.UINT16, B}, {Format.UINT32, C}],
+            [{Format.UINT8, A}, {Format.UINT16, B}, {Format.UINT32, C}, {Format.UINT64, D}],
+        ];
+
+        foreach (I, T; TypeTuple!(ubyte, ushort, uint, ulong)) {
+            foreach (i, test; tests[I]) {
+                mixin DefinePacker;
+
+                packer.pack(cast(T)test.value);
+                assert(buffer.data[0] == test.format);
+
+                switch (i) {
+                case 0:
+                    auto answer = take8from!(T.sizeof * 8)(test.value);
+                    assert(memcmp(&buffer.data[1], &answer, ubyte.sizeof) == 0);
+                    break;
+                case 1:
+                    auto answer = convertEndianTo!16(test.value);
+                    assert(memcmp(&buffer.data[1], &answer, ushort.sizeof) == 0);
+                    break;
+                case 2:
+                    auto answer = convertEndianTo!32(test.value);
+                    assert(memcmp(&buffer.data[1], &answer, uint.sizeof) == 0);
+                    break;
+                default:
+                    auto answer = convertEndianTo!64(test.value);
+                    assert(memcmp(&buffer.data[1], &answer, ulong.sizeof) == 0);
+                }
+            }
+        }
+    }
+    { // int *
+        struct STest { ubyte format; long value; }
+
+        enum : long { A = byte.min, B = short.min, C = int.min, D = long.min }
+
+        static STest[][] tests = [
+            [{Format.INT8, A}], 
+            [{Format.INT8, A}, {Format.INT16, B}],
+            [{Format.INT8, A}, {Format.INT16, B}, {Format.INT32, C}],
+            [{Format.INT8, A}, {Format.INT16, B}, {Format.INT32, C}, {Format.INT64, D}],
+        ];
+
+        foreach (I, T; TypeTuple!(byte, short, int, long)) {
+            foreach (i, test; tests[I]) {
+                mixin DefinePacker;
+
+                packer.pack(cast(T)test.value);
+                assert(buffer.data[0] == test.format);
+
+                switch (i) {
+                case 0:
+                    auto answer = take8from!(T.sizeof * 8)(test.value);
+                    assert(memcmp(&buffer.data[1], &answer, byte.sizeof) == 0);
+                    break;
+                case 1:
+                    auto answer = convertEndianTo!16(test.value);
+                    assert(memcmp(&buffer.data[1], &answer, short.sizeof) == 0);
+                    break;
+                case 2:
+                    auto answer = convertEndianTo!32(test.value);
+                    assert(memcmp(&buffer.data[1], &answer, int.sizeof) == 0);
+                    break;
+                default:
+                    auto answer = convertEndianTo!64(test.value);
+                    assert(memcmp(&buffer.data[1], &answer, long.sizeof) == 0);
+                }
+            }
+        }
+    }
+    { // fload, double
+        struct FTest { ubyte format; double value; }
+        union _f { float  f; uint  i; }
+        union _d { double f; ulong i; }
+
+        static FTest[] tests = [
+            {Format.FLOAT,  float.min},
+            {Format.DOUBLE, double.max},
+        ];
+
+        foreach (I, T; TypeTuple!(float, double)) {
+            mixin DefinePacker;
+
+            packer.pack(cast(T)tests[I].value);
+            assert(buffer.data[0] == tests[I].format);
+
+            static if (I) {
+                const answer = convertEndianTo!64(_d(cast(T)tests[I].value).i);
+                assert(memcmp(&buffer.data[1], &answer, double.sizeof) == 0);
+            } else {
+                const answer = convertEndianTo!32(_f(cast(T)tests[I].value).i);
+                assert(memcmp(&buffer.data[1], &answer, float.sizeof) == 0);                
+            }
+        }
+    }
+    { // container
+        struct Test { ubyte format; size_t value; }
+
+        enum : ulong { A = 16 / 2, B = ushort.max, C = uint.max }
+
+        static Test[][] tests = [
+            [{Format.ARRAY | A, Format.ARRAY | A}, {Format.ARRAY16, B}, {Format.ARRAY32, C}],
+            [{Format.MAP   | A, Format.MAP   | A}, {Format.MAP16,   B}, {Format.MAP32,   C}],
+            [{Format.RAW   | A, Format.RAW   | A}, {Format.RAW16,   B}, {Format.RAW32,   C}],
+        ];
+
+        foreach (I, Name; TypeTuple!("Array", "Map", "Raw")) {
+            auto test = tests[I];
+
+            foreach (i, T; TypeTuple!(ubyte, ushort, uint)) {
+                mixin DefinePacker; 
+                mixin("packer.pack" ~ Name ~ "(i ? test[i].value : A);");
+
+                assert(buffer.data[0] == test[i].format);
+
+                switch (i) {
+                case 0:
+                    auto answer = take8from(test[i].value);
+                    assert(memcmp(&buffer.data[0], &answer, ubyte.sizeof) == 0);
+                    break;
+                case 1:
+                    auto answer = convertEndianTo!16(test[i].value);
+                    assert(memcmp(&buffer.data[1], &answer, ushort.sizeof) == 0);
+                    break;
+                default:
+                    auto answer = convertEndianTo!32(test[i].value);
+                    assert(memcmp(&buffer.data[1], &answer, uint.sizeof) == 0);
+                }
+            }
+        }
+    }
 }
 
 
