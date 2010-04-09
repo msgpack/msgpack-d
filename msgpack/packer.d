@@ -42,7 +42,24 @@ template isWritableBuffer(Buffer)
 
 
 /**
- * $(D Packer) is a $(D MessagePack) serializer.
+ * $(D Packer) is a $(D MessagePack) serializer
+ *
+ * Example:
+-----
+auto buffer = vrefBuffer;
+auto packer = packer(&buffer);
+
+packer.packArray(4);  // sets array length
+packer.packFalse();   // false
+packer.pack(100);     // 100   of int
+packer.pack(1e-10);   // 1e-10 of double
+packer.packNil();     // null
+
+stdout.rawWrite(buffer.data);  // or packer.buffer.data
+-----
+ *
+ * Some buffers that Packer can use are in $(D msgpack.buffer),
+ * and you use another object if the $(D Buffer) object meets $(D isWritableBuffer).
  */
 struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 {
@@ -205,7 +222,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
                 store_[0] = Format.UINT64;
                 *cast(ulong*)&store_[Offset] = temp;
-                buffer_.write(store_[0..Offset + ulong.sizeof]);
+                buffer_.write(store_);
             }
         }
 
@@ -335,7 +352,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
                     store_[0] = Format.INT64;
                     *cast(long*)&store_[Offset] = temp;
-                    buffer_.write(store_[0..Offset + long.sizeof]);
+                    buffer_.write(store_);
                 } else {
                     // int 32
                     const temp = convertEndianTo!32(value);
@@ -391,7 +408,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
                     store_[0] = Format.UINT64;
                     *cast(ulong*)&store_[Offset] = temp;
-                    buffer_.write(store_[0..Offset + ulong.sizeof]);
+                    buffer_.write(store_);
                 }
             }
         }
@@ -409,7 +426,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
         store_[0] = Format.FLOAT;
         *cast(uint*)&store_[Offset] = temp;
-        buffer_.write(store_[0..1 + float.sizeof]);
+        buffer_.write(store_[0..Offset + uint.sizeof]);
 
         return this;
     }

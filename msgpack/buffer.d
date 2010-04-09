@@ -3,11 +3,13 @@
 /**
  * MessagePack for D, some buffer implementation
  *
- * Buffer list
- *  - SimpleBuffer
- *  - DeflationBuffer
- *  - VRefBuffer
- *  - FileBuffer
+ * Buffer list:
+ * $(UL
+ *  $(LI SimpleBuffer)
+ *  $(LI DeflationBuffer)
+ *  $(LI VRefBuffer)
+ *  $(LI FileBuffer)
+ * )
  *
  * Copyright: Copyright Masahiro Nakagawa 2010.
  * License:   <a href = "http://www.boost.org/LICENSE_1_0.txt">Boost License 1.0</a>.
@@ -148,10 +150,10 @@ struct DeflationBuffer
 
 
     /**
-     * Forwards to buffer content.
+     * Returns available buffer content.
      *
      * Returns:
-     *  the available content of buffer.
+     *  the slice of deflated buffer.
      */
     @property nothrow ubyte[] data()
     {
@@ -357,7 +359,7 @@ struct VRefBuffer
 
 
     /**
-     * Forwards to buffer contents excluding references.
+     * Returns the buffer contents excluding references.
      *
      * Returns:
      *  the non-contiguous copied contents.
