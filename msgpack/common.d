@@ -207,6 +207,35 @@ else
 }
 
 
+/**
+ * Loads $(D_PARAM T) type value from $(D_PARAM buffer).
+ *
+ * Params:
+ *  buffer = the serialized contents.
+ *
+ * Returns:
+ *  the Endian-converted value.
+ */
+T load16To(T)(ubyte[] buffer)
+{
+    return cast(T)(convertEndianTo!16(*cast(ushort*)buffer.ptr));
+}
+
+
+/// ditto
+T load32To(T)(ubyte[] buffer)
+{
+    return cast(T)(convertEndianTo!32(*cast(uint*)buffer.ptr));
+}
+
+
+/// ditto
+T load64To(T)(ubyte[] buffer)
+{
+    return cast(T)(convertEndianTo!64(*cast(ulong*)buffer.ptr));
+}
+
+
 private:
 
 
