@@ -234,37 +234,3 @@ T load64To(T)(ubyte[] buffer)
 {
     return cast(T)(convertEndianTo!64(*cast(ulong*)buffer.ptr));
 }
-
-
-private:
-
-
-/+
-
-/**
- * Returns true if $(D_PARAM T) is 16bit primitive type.
- */
-template is16bit(T)
-{
-    enum is16bit = staticIndexOf!(Unqual!(T), short, ushort) >= 0;
-}
-
-
-/**
- * Returns true if $(D_PARAM T) is 32bit primitive type.
- */
-template is32bit(T)
-{
-    enum is32bit = staticIndexOf!(Unqual!(T), int, uint, float) >= 0;
-}
-
-
-/**
- * Returns true if $(D_PARAM T) is 64bit primitive type.
- */
-template is64bit(T)
-{
-    enum is64bit = staticIndexOf!(Unqual!(T), long, ulong, double) >= 0;
-}
-
- +/
