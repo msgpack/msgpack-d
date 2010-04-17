@@ -1,8 +1,8 @@
 # MessagePack for D
 
-MessagePack is a binary-based JSON-like object serialization library.
+MessagePack is a binary-based JSON-like serialization library.
 
-This library is pure D implementaion of MessagePack.
+MessagePack for D is a pure D implementation of MessagePack.
 
 # Link
 

@@ -34,7 +34,7 @@ struct Unpacker
 {
   private:
     /**
-     * Context state of Unpacker deserializing
+     * Context state of deserialization
      */
     enum State
     {
@@ -75,16 +75,11 @@ struct Unpacker
 
 
     /*
-     * Internal stack context.
-     *
-     * enum MAX_STACK_SIZE = 16;
-     *  Limitation of container nesting. This is a implementation problem
-     *  of original implementation. I hope that this limitation
-     *  will be spcecified in the MessagePack-spec in the future.
+     * Internal stack context
      */
     static struct Context
     {
-        static struct Stack
+        static struct Container
         {
             ElementType type;    // object container type
             mp_Object   object;  // current object
@@ -93,10 +88,10 @@ struct Unpacker
         }
 
 
-        State   state;  // current state of deserialization
-        size_t  trail;  // current deserializing size
-        size_t  top;    // current index of stack
-        Stack[] stack;  // storing objects
+        State       state;  // current state of deserialization
+        size_t      trail;  // current deserializing size
+        size_t      top;    // current index of stack
+        Container[] stack;  // storing objects
     }
 
 
@@ -111,7 +106,7 @@ struct Unpacker
 
   public:
     /**
-     * Constructs a Unpacker.
+     * Constructs a $(D Unpacker).
      *
      * Params:
      *  target     = byte buffer to deserialize
@@ -158,10 +153,10 @@ struct Unpacker
      * Range primitive operation that executes deserialization.
      *
      * Returns:
-     *  true if completed deserialization. otherwize false.
+     *  true if deserialization completed, otherwize false.
      *
      * Throws:
-     *  UnpackException when parse error occurs.
+     *  $(D UnpackException) when parse error occurs.
      */
     @property bool empty()
     {
@@ -180,6 +175,9 @@ struct Unpacker
         auto top   =  context_.top;
         auto stack = &context_.stack;
 
+        /*
+         * Helper for container deserialization
+         */
         bool startContainer(string Type)(ElementType type, size_t length)
         {
             mixin("unpack" ~ Type ~ "(&(*stack)[top].object, length);");
@@ -265,7 +263,7 @@ struct Unpacker
                     goto Lstart;
                 }
             } else {
-                // lack data for deserialization
+                // data lack for deserialization
                 if (used_ - cur < trail)
                     goto Labort;
 
@@ -274,15 +272,15 @@ struct Unpacker
                 final switch (state) {
                 case State.FLOAT:
                     union _f { uint i; float f; };
-
                     _f temp;
+
                     temp.i = load32To!uint(buffer_[base..base + trail]);
                     unpackDouble(&obj, temp.f);
                     goto Lpush;
                 case State.DOUBLE:
                     union _d { ulong i; double f; };
-
                     _d temp;
+
                     temp.i = load64To!long(buffer_[base..base + trail]);
                     unpackDouble(&obj, temp.f);
                     goto Lpush;
@@ -299,7 +297,7 @@ struct Unpacker
                     unpackUInt(&obj, load64To!ulong(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.INT8:
-                    unpackInt(&obj, buffer_[base]);
+                    unpackInt(&obj, cast(byte)buffer_[base]);
                     goto Lpush;
                 case State.INT16:
                     unpackInt(&obj, load16To!long(buffer_[base..base + trail]));
@@ -567,4 +565,3 @@ void unpackBool(mp_Object* object, in bool value)
     object.type        = mp_Type.BOOLEAN;
     object.via.boolean = value;
 }
-import std.stdio;
