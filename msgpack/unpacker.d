@@ -33,7 +33,7 @@ class UnpackException : Exception
 struct Unpacker
 {
   private:
-    /**
+    /*
      * Context state of deserialization
      */
     enum State
@@ -63,7 +63,7 @@ struct Unpacker
     }
 
 
-    /**
+    /*
      * Element type of container
      */
     enum ElementType
@@ -112,7 +112,7 @@ struct Unpacker
      *  target     = byte buffer to deserialize
      *  bufferSize = size limit of buffer size
      */
-    this(in ubyte[] target, in size_t bufferSize = 8192)
+    this(ubyte[] target, size_t bufferSize = 8192)
     in
     {
         assert(target.length);
@@ -136,7 +136,7 @@ struct Unpacker
      * Params:
      *  target = new buffer to deserialize.
      */
-    void append(in ubyte[] target)
+    void append(ubyte[] target)
     {
         const size = target.length;
 
@@ -180,7 +180,7 @@ struct Unpacker
          */
         bool startContainer(string Type)(ElementType type, size_t length)
         {
-            mixin("unpack" ~ Type ~ "(&(*stack)[top].object, length);");
+            mixin("unpack" ~ Type ~ "((*stack)[top].object, length);");
 
             if (length == 0)
                 return false;
@@ -202,10 +202,10 @@ struct Unpacker
                 const header = buffer_[cur];
 
                 if (0x00 <= header && header <= 0x7f) {         // positive
-                    unpackUInt(&obj, header);
+                    unpackUInt(obj, header);
                     goto Lpush;
                 } else if (0xe0 <= header && header <= 0xff) {  // negative
-                    unpackInt(&obj, cast(byte)header);
+                    unpackInt(obj, cast(byte)header);
                     goto Lpush;
                 } else if (0xa0 <= header && header <= 0xbf) {  // fix raw
                     trail = header & 0x1f;
@@ -247,13 +247,13 @@ struct Unpacker
                         state = cast(State)(header & 0x1f);
                         break;
                     case Format.NIL:
-                        unpackNil(&obj);
+                        unpackNil(obj);
                         goto Lpush;
                     case Format.TRUE:
-                        unpackBool(&obj, true);
+                        unpackBool(obj, true);
                         goto Lpush;
                     case Format.FALSE:
-                        unpackBool(&obj, false);
+                        unpackBool(obj, false);
                         goto Lpush;
                     default:
                         throw new UnpackException("Unknown format");
@@ -275,41 +275,41 @@ struct Unpacker
                     _f temp;
 
                     temp.i = load32To!uint(buffer_[base..base + trail]);
-                    unpackDouble(&obj, temp.f);
+                    unpackDouble(obj, temp.f);
                     goto Lpush;
                 case State.DOUBLE:
                     union _d { ulong i; double f; };
                     _d temp;
 
                     temp.i = load64To!long(buffer_[base..base + trail]);
-                    unpackDouble(&obj, temp.f);
+                    unpackDouble(obj, temp.f);
                     goto Lpush;
                 case State.UINT8:
-                    unpackUInt(&obj, buffer_[base]);
+                    unpackUInt(obj, buffer_[base]);
                     goto Lpush;
                 case State.UINT16:
-                    unpackUInt(&obj, load16To!ulong(buffer_[base..base + trail]));
+                    unpackUInt(obj, load16To!ulong(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.UINT32:
-                    unpackUInt(&obj, load32To!ulong(buffer_[base..base + trail]));
+                    unpackUInt(obj, load32To!ulong(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.UINT64:
-                    unpackUInt(&obj, load64To!ulong(buffer_[base..base + trail]));
+                    unpackUInt(obj, load64To!ulong(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.INT8:
-                    unpackInt(&obj, cast(byte)buffer_[base]);
+                    unpackInt(obj, cast(byte)buffer_[base]);
                     goto Lpush;
                 case State.INT16:
-                    unpackInt(&obj, load16To!long(buffer_[base..base + trail]));
+                    unpackInt(obj, load16To!long(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.INT32:
-                    unpackInt(&obj, load32To!long(buffer_[base..base + trail]));
+                    unpackInt(obj, load32To!long(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.INT64:
-                    unpackInt(&obj, load64To!long(buffer_[base..base + trail]));
+                    unpackInt(obj, load64To!long(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.RAW: Lraw:
-                    unpackRaw(&obj, buffer_[base..base + trail]);
+                    unpackRaw(obj, buffer_[base..base + trail]);
                     goto Lpush;
                 case State.RAW16:
                     trail = load16To!uint(buffer_[base..base + trail]);
@@ -447,7 +447,7 @@ struct Unpacker
      * Params:
      *  size = new buffer size.
      */
-    void expandBuffer(in size_t size)
+    void expandBuffer(size_t size)
     {
         // rewinds buffer(completed deserialization)
         if (used_ == offset_ && !hasRaw_) {
@@ -489,7 +489,7 @@ struct Unpacker
  *  target     = byte buffer to deserialize
  *  bufferSize = size limit of buffer size
  */
-Unpacker unpacker(ubyte[] target, in size_t bufferSize = 8192)
+Unpacker unpacker(ubyte[] target, size_t bufferSize = 8192)
 {
     return typeof(return)(target, bufferSize);
 }
@@ -502,10 +502,10 @@ private:
  * Sets object type and value.
  *
  * Params:
- *  object = set object
+ *  object = the object to set
  *  value  = the content to set
  */
-void unpackUInt(mp_Object* object, in ulong value)
+void unpackUInt(ref mp_Object object, ulong value)
 {
     object.type         = mp_Type.POSITIVE_INTEGER;
     object.via.uinteger = value;
@@ -513,7 +513,7 @@ void unpackUInt(mp_Object* object, in ulong value)
 
 
 /// ditto
-void unpackInt(mp_Object* object, in long value)
+void unpackInt(ref mp_Object object, long value)
 {
     object.type        = mp_Type.NEGATIVE_INTEGER;
     object.via.integer = value;
@@ -521,7 +521,7 @@ void unpackInt(mp_Object* object, in long value)
 
 
 /// ditto
-void unpackDouble(mp_Object* object, in double value)
+void unpackDouble(ref mp_Object object, double value)
 {
     object.type         = mp_Type.FLOAT;
     object.via.floating = value;
@@ -529,7 +529,7 @@ void unpackDouble(mp_Object* object, in double value)
 
 
 /// ditto
-void unpackRaw(mp_Object* object, ubyte[] raw)
+void unpackRaw(ref mp_Object object, ubyte[] raw)
 {
     object.type    = mp_Type.RAW;
     object.via.raw = raw;
@@ -537,7 +537,7 @@ void unpackRaw(mp_Object* object, ubyte[] raw)
 
 
 /// ditto
-void unpackArray(mp_Object* object, size_t length)
+void unpackArray(ref mp_Object object, size_t length)
 {
     object.type = mp_Type.ARRAY;
     object.via.array.reserve(length);
@@ -545,7 +545,7 @@ void unpackArray(mp_Object* object, size_t length)
 
 
 /// ditto
-void unpackMap(mp_Object* object, size_t length)
+void unpackMap(ref mp_Object object, size_t length)
 {
     object.type = mp_Type.MAP;
     object.via.map.reserve(length);
@@ -553,14 +553,14 @@ void unpackMap(mp_Object* object, size_t length)
 
 
 /// ditto
-void unpackNil(mp_Object* object)
+void unpackNil(ref mp_Object object)
 {
     object.type = mp_Type.NIL;
 }
 
 
 /// ditto
-void unpackBool(mp_Object* object, in bool value)
+void unpackBool(ref mp_Object object, bool value)
 {
     object.type        = mp_Type.BOOLEAN;
     object.via.boolean = value;
