@@ -50,7 +50,7 @@ class InvalidTypeException : Exception
  */
 struct mp_Object
 {
-    union Value
+    static union Value
     {
         bool          boolean;
         ulong         uinteger;
@@ -62,12 +62,12 @@ struct mp_Object
     }
 
 
-    mp_Type type;
-    Value   via;   // real value
+    mp_Type type;  /// represents object type 
+    Value   via;   /// represents real value
 
 
     /**
-     * Constructs a $(D mp_Object) with arguments for nil object.
+     * Constructs a $(D mp_Object) with arguments.
      *
      * Params:
      *  value   = the real content.
@@ -234,6 +234,54 @@ struct mp_Object
     {
         throw new InvalidTypeException("Attempt to cast with another type");
     }
+}
+
+
+unittest
+{
+    // nil
+    mp_Object obj = mp_Object();
+
+    assert(obj.type == mp_Type.NIL);
+
+    // boolean
+    obj = mp_Object(true);
+    assert(obj.type      == mp_Type.BOOLEAN);
+    assert(obj.as!(bool) == true);
+
+    // unsigned integer
+    obj = mp_Object(10UL);
+    assert(obj.type      == mp_Type.POSITIVE_INTEGER);
+    assert(obj.as!(uint) == 10);
+
+    // signed integer
+    obj = mp_Object(-20L);
+    assert(obj.type     == mp_Type.NEGATIVE_INTEGER);
+    assert(obj.as!(int) == -20);
+
+    // floating point
+    obj = mp_Object(0.1e-10);
+    assert(obj.type        == mp_Type.FLOAT);
+    assert(obj.as!(double) == 0.1e-10);
+
+    // raw
+    obj = mp_Object(cast(ubyte[])[72, 105, 33]);
+    assert(obj.type        == mp_Type.RAW);
+    assert(obj.as!(string) == "Hi!");
+
+    // array
+    mp_Object[] array;
+
+    obj = mp_Object(array ~= obj);
+    assert(obj.type          == mp_Type.ARRAY);
+    assert(obj.as!(string[]) == ["Hi!"]);
+
+    // map
+    mp_KeyValue[] map; map ~= mp_KeyValue(mp_Object(1L), mp_Object(2L));
+
+    obj = mp_Object(map);
+    assert(obj.type          == mp_Type.MAP);
+    assert(obj.as!(int[int]) == [1:2]);
 }
 
 
