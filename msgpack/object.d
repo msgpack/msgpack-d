@@ -142,7 +142,7 @@ struct mp_Object
      *  converted value.
      *
      * Throws:
-     *  InvalidTypeException if type mismatches.
+     *  InvalidTypeException if type is mismatched.
      *
      * NOTE:
      *  Current implementation uses cast.
@@ -184,6 +184,9 @@ struct mp_Object
     /// ditto
     @property T as(T)() if (isArray!(T))
     {
+        if (type == mp_Type.NIL)
+            return null;
+
         static if (isSomeString!(T)) {
             if (type != mp_Type.RAW)
                 raise();
@@ -210,6 +213,9 @@ struct mp_Object
     {
         alias typeof(T.init.keys[0])   K;
         alias typeof(T.init.values[0]) V;
+
+        if (type == mp_Type.NIL)
+            return null;
 
         if (type != mp_Type.MAP)
             raise();
