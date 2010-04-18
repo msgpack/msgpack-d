@@ -565,3 +565,52 @@ void unpackBool(ref mp_Object object, bool value)
     object.type        = mp_Type.BOOLEAN;
     object.via.boolean = value;
 }
+
+
+unittest
+{
+    mp_Object object;
+
+    // Unsigned integer
+    unpackUInt(object, uint.max);
+    assert(object.type         == mp_Type.POSITIVE_INTEGER);
+    assert(object.via.uinteger == uint.max);
+
+    // Signed integer
+    unpackInt(object, int.min);
+    assert(object.type        == mp_Type.NEGATIVE_INTEGER);
+    assert(object.via.integer == int.min);
+
+    // Floating point
+    unpackDouble(object, double.max);
+    assert(object.type         == mp_Type.FLOAT);
+    assert(object.via.floating == double.max);
+
+    // Raw
+    unpackRaw(object, cast(ubyte[])[1]);
+    assert(object.type    == mp_Type.RAW);
+    assert(object.via.raw == cast(ubyte[])[1]);
+
+    // Array
+    mp_Object[] array; array.reserve(16);
+
+    unpackArray(object, 16);
+    assert(object.type               == mp_Type.ARRAY);
+    assert(object.via.array.capacity == array.capacity);
+
+    // Map
+    mp_KeyValue[] map; map.reserve(16);
+
+    unpackMap(object, 16);
+    assert(object.type             == mp_Type.MAP);
+    assert(object.via.map.capacity == map.capacity);
+
+    // NIL
+    unpackNil(object);
+    assert(object.type == mp_Type.NIL);
+
+    // Bool
+    unpackBool(object, true);
+    assert(object.type        == mp_Type.BOOLEAN);
+    assert(object.via.boolean == true);
+}
