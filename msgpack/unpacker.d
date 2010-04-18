@@ -12,6 +12,8 @@ module msgpack.unpacker;
 import msgpack.common;
 import msgpack.object;
 
+import std.array;  // for Range
+
 
 /**
  * $(D UnpackException) is thrown on parse error
@@ -40,7 +42,7 @@ struct Unpacker
     {
         HEADER = 0x00,
 
-        // Floating point, Unsigned, Signed interger
+        // Floating point, Unsigned, Signed interger (== header & 0x03)
         FLOAT = 0x0a,
         DOUBLE,
         UINT8,
@@ -52,7 +54,7 @@ struct Unpacker
         INT32,
         INT64,
 
-        // Container
+        // Container (== header & 0x01)
         RAW16 = 0x1a,
         RAW32,
         ARRAY16,
@@ -95,13 +97,14 @@ struct Unpacker
     }
 
 
-    ubyte[] buffer_;   // internal buffer
-    size_t  limit_;    // size limit of buffer
-    size_t  used_;     // index that buffer cosumed
-    size_t  offset_;   // index that buffer parsed
-    size_t  parsed_;   // total size of parsed message
-    bool    hasRaw_;   // indicates whether Raw object has been deserialized
-    Context context_;  // stack environment for streaming deserialization
+    ubyte[]     buffer_;   // internal buffer
+    size_t      limit_;    // size limit of buffer
+    size_t      used_;     // index that buffer cosumed
+    size_t      offset_;   // index that buffer parsed
+    size_t      parsed_;   // total size of parsed message
+    bool        hasRaw_;   // indicates whether Raw object has been deserialized
+    Context     context_;  // stack environment for streaming deserialization
+    mp_Object[] range_;    // for Range operation
 
 
   public:
@@ -112,7 +115,7 @@ struct Unpacker
      *  target     = byte buffer to deserialize
      *  bufferSize = size limit of buffer size
      */
-    this(ubyte[] target, size_t bufferSize = 8192)
+    this(in ubyte[] target, size_t bufferSize = 8192)
     in
     {
         assert(target.length);
@@ -136,7 +139,12 @@ struct Unpacker
      * Params:
      *  target = new buffer to deserialize.
      */
-    void append(ubyte[] target)
+    void append(in ubyte[] target)
+    in
+    {
+        assert(target.length);
+    }
+    body
     {
         const size = target.length;
 
@@ -150,15 +158,15 @@ struct Unpacker
 
 
     /**
-     * Range primitive operation that executes deserialization.
+     * Executes deserialization.
      *
      * Returns:
-     *  true if deserialization completed, otherwize false.
+     *  true if deserialization has been completed, otherwise false.
      *
      * Throws:
      *  $(D UnpackException) when parse error occurs.
      */
-    @property bool empty()
+    bool execute()
     {
         /*
          * Current implementation is very durty(goto! goto!! goto!!!).
@@ -309,6 +317,7 @@ struct Unpacker
                     unpackInt(obj, load64To!long(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.RAW: Lraw:
+                    hasRaw_ = true;
                     unpackRaw(obj, buffer_[base..base + trail]);
                     goto Lpush;
                 case State.RAW16:
@@ -347,7 +356,7 @@ struct Unpacker
                     goto Lagain;
                 case State.HEADER:
                     break;
-                }               
+                }      
             }
 
           Lpush:
@@ -388,12 +397,13 @@ struct Unpacker
 
       Lfinish:
         (*stack)[0].object = obj; 
-        ret = false;
+        range_ = obj.via.array;
+        ret    = true;
         cur++;
         goto Lend;
 
       Labort:
-        ret = true;
+        ret = false;
 
       Lend:
         context_.state = state;
@@ -407,24 +417,48 @@ struct Unpacker
 
 
     /**
-     * Range primitive operation that returns the currently element.
+     * Clears some states.
+     */
+    nothrow void clear()
+    {
+        initializeContext();
+
+        parsed_ = 0;
+    }
+
+
+    /// InputRange implementations.
+
+    /**
+     * Range primitive operation that checks iteration state.
      *
      * Returns:
-     *  the deserialized $(D mp_Object).
+     *  true if there are no more elements to be iterated.
      */
-    @property mp_Object front()
+    @property bool empty() const  // std.array.empty isn't nothrow function
     {
-        return context_.stack[0].object;
+        return range_.empty;
     }
 
 
     /**
-     * Range primitive operation that resets environment.
+     * Range primitive operation that returns the currently iterated element.
+     *
+     * Returns:
+     *  the deserialized $(D mp_Object).
+     */
+    mp_Object front()
+    {
+        return range_.front();
+    }
+
+
+    /**
+     * Range primitive operation that advances the range to its next element.
      */
     void popFront()
     {
-        initializeContext();
-        parsed_  = 0;
+        range_.popFront();
     }
 
 
@@ -432,7 +466,7 @@ struct Unpacker
     /**
      * initializes internal stack environment.
      */
-    void initializeContext()
+    nothrow void initializeContext()
     {
         context_.state        = State.HEADER;
         context_.trail        = 0;
@@ -489,7 +523,7 @@ struct Unpacker
  *  target     = byte buffer to deserialize
  *  bufferSize = size limit of buffer size
  */
-Unpacker unpacker(ubyte[] target, size_t bufferSize = 8192)
+Unpacker unpacker(in ubyte[] target, size_t bufferSize = 8192)
 {
     return typeof(return)(target, bufferSize);
 }
@@ -540,6 +574,7 @@ void unpackRaw(ref mp_Object object, ubyte[] raw)
 void unpackArray(ref mp_Object object, size_t length)
 {
     object.type = mp_Type.ARRAY;
+    object.via.array.length = 0;
     object.via.array.reserve(length);
 }
 
@@ -548,6 +583,7 @@ void unpackArray(ref mp_Object object, size_t length)
 void unpackMap(ref mp_Object object, size_t length)
 {
     object.type = mp_Type.MAP;
+    object.via.map.length = 0;
     object.via.map.reserve(length);
 }
 
