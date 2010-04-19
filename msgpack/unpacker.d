@@ -124,7 +124,7 @@ struct Unpacker
     {
         const size = target.length;
 
-        expandBuffer(bufferSize < size ? size : bufferSize);
+        expand(bufferSize < size ? size : bufferSize);
 
         buffer_[0..size] = target;
         used_            = size;
@@ -134,7 +134,19 @@ struct Unpacker
 
 
     /**
-     * Appends $(D target) to internal buffer.
+     * Forwards to internal buffer.
+     *
+     * Returns:
+     *  the reference of internal buffer.
+     */
+    @property nothrow ref ubyte[] buffer()
+    {
+        return buffer_;
+    }
+
+
+    /**
+     * Appends $(D_PARAM target) to internal buffer.
      *
      * Params:
      *  target = new buffer to deserialize.
@@ -150,10 +162,103 @@ struct Unpacker
 
         // lacks current buffer?
         if (limit_ - used_ < size)
-            expandBuffer(size);
+            expand(size);
 
         buffer_[used_..used_ + size] = target;
         used_ += size;
+    }
+
+
+    /**
+     * Consumes buffer. This method is helper for buffer property.
+     * You must use this method if you write bytes to buffer directly, 
+     *
+     * Params:
+     *  size = the number of consume.
+     */
+    nothrow void consume(size_t size)
+    {
+        if (used_ + size > limit_)
+            used_ = limit_;
+        else
+            used_ += size;
+    }
+
+
+    /**
+     * Skips unparsed buffer.
+     *
+     * Params:
+     *  size = the number to skip
+     */
+    nothrow void skip(in size_t size)
+    {
+        if (offset_ + size > used_)
+            offset_ = used_;
+        else
+            offset_ += size;
+    }
+
+
+    /**
+     * Removes unparsed buffer.
+     */
+    nothrow void remove()
+    {
+        used_ = offset_;
+    }
+
+
+    /**
+     * Clears some states.
+     */
+    nothrow void clear()
+    {
+        initializeContext();
+
+        parsed_ = 0;
+    }
+
+
+    /**
+     * Returns:
+     *  the total size including unparsed buffer size.
+     */
+    @property nothrow size_t size() const
+    {
+        return parsed_ - offset_ + used_;
+    }
+
+
+    /**
+     * Returns:
+     *  the parsed size.
+     */
+    @property nothrow size_t parsedSize() const
+    {
+        return parsed_;
+    }
+
+
+    /**
+     * Returns:
+     *  the unparsed size of buffer.
+     */
+    @property nothrow size_t unparsedSize() const
+    {
+        return used_ - offset_;
+    }
+
+
+    /**
+     * Forwards to deserialized object.
+     *
+     * Returns:
+     *  the deserialized object if deserialization completed.
+     */
+    @property nothrow mp_Object data()
+    {
+        return context_.stack[0].object;
     }
 
 
@@ -396,9 +501,10 @@ struct Unpacker
         goto Labort;
 
       Lfinish:
-        (*stack)[0].object = obj; 
-        range_ = obj.via.array;
-        ret    = true;
+        if (obj.type == mp_Type.ARRAY)
+            range_= obj.via.array;
+        (*stack)[0].object = obj;
+        ret = true;
         cur++;
         goto Lend;
 
@@ -413,17 +519,6 @@ struct Unpacker
         offset_        = cur;
 
         return ret;
-    }
-
-
-    /**
-     * Clears some states.
-     */
-    nothrow void clear()
-    {
-        initializeContext();
-
-        parsed_ = 0;
     }
 
 
@@ -447,7 +542,7 @@ struct Unpacker
      * Returns:
      *  the deserialized $(D mp_Object).
      */
-    mp_Object front()
+    @property mp_Object front()
     {
         return range_.front();
     }
@@ -481,7 +576,7 @@ struct Unpacker
      * Params:
      *  size = new buffer size.
      */
-    void expandBuffer(size_t size)
+    void expand(size_t size)
     {
         // rewinds buffer(completed deserialization)
         if (used_ == offset_ && !hasRaw_) {
@@ -526,6 +621,43 @@ struct Unpacker
 Unpacker unpacker(in ubyte[] target, size_t bufferSize = 8192)
 {
     return typeof(return)(target, bufferSize);
+}
+
+
+version(unittest) import msgpack.packer, msgpack.buffer;
+
+unittest
+{
+    SimpleBuffer buffer;
+    auto packer = packer(&buffer);
+    enum Size   = mp_Type.max;
+
+    packer.packArray(Size);
+    packer.packNil().packTrue().pack(1).pack(-2).pack("Hi!").pack([1]).pack([1:1]);
+
+    auto unpacker = unpacker(packer.buffer.data);
+
+    unpacker.execute();
+
+    // Range test
+    foreach (unused; 0..2) {
+        uint i;
+
+        foreach (obj; unpacker) i++;
+        assert(i == Size);
+    }
+
+    auto result = unpacker.data.via.array;
+
+    assert(result[0].type          == mp_Type.NIL);
+    assert(result[1].via.boolean   == true);
+    assert(result[2].via.uinteger  == 1);
+    assert(result[3].via.integer   == -2);
+    assert(result[4].via.raw       == [72, 105, 33]);
+    assert(result[5].as!(int[])    == [1]);
+    assert(result[6].as!(int[int]) == [1:1]);
+
+    unpacker.clear();
 }
 
 
