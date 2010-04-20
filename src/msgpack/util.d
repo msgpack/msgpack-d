@@ -9,7 +9,7 @@
  */
 module msgpack.util;
 
-import msgpack.object;
+public import msgpack.object;
 
 
 /**
