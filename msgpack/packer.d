@@ -106,14 +106,14 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
      * Returns:
      *  this to method chain.
      */
-    Packer pack(T : bool)(in T value)
+    Packer pack(T)(in T value) if (is(Unqual!T == bool))
     {
         return value ? packTrue() : packFalse();
     }
 
 
     /// ditto
-    Packer pack(T : ubyte)(in T value)
+    Packer pack(T)(in T value) if (is(Unqual!T == ubyte))
     {
         if (value < (1 << 7)) {
             // fixnum
@@ -130,7 +130,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T : ushort)(in T value)
+    Packer pack(T)(in T value) if (is(Unqual!T == ushort))
     {
         if (value < (1 << 7)) {
             // fixnum
@@ -154,7 +154,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T : uint)(in T value)
+    Packer pack(T)(in T value) if (is(Unqual!T == uint))
     {
         if (value < (1 << 8)) {
             if (value < (1 << 7)) {
@@ -189,7 +189,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T : ulong)(in T value)
+    Packer pack(T)(in T value) if (is(Unqual!T == ulong))
     {
         if (value < (1UL << 8)) {
             if (value < (1UL << 7)) {
@@ -231,7 +231,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T : byte)(in T value)
+    Packer pack(T)(in T value) if (is(Unqual!T == byte))
     {
         if (value < -(1 << 5)) {
             // int 8
@@ -248,7 +248,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T : short)(in T value)
+    Packer pack(T)(in T value) if (is(Unqual!T == short))
     {
         if (value < -(1 << 5)) {
             if (value < -(1 << 7)) {
@@ -288,7 +288,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T : int)(in T value)
+    Packer pack(T)(in T value) if (is(Unqual!T == int))
     {
         if (value < -(1 << 5)) {
             if (value < -(1 << 15)) {
@@ -342,7 +342,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T : long)(in T value)
+    Packer pack(T)(in T value) if (is(Unqual!T == long))
     {
         if (value < -(1L << 5)) {
             if (value < -(1L << 15)) {
@@ -418,7 +418,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T : float)(in T value)
+    Packer pack(T)(in T value) if (is(Unqual!T == float))
     {
         union _ { float f; uint i; }
 
@@ -433,7 +433,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T : double)(in T value)
+    Packer pack(T)(in T value) if (is(Unqual!T == double))
     {
         union _ { double f; ulong i; }
 
@@ -448,8 +448,10 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T : U[], U)(in T array)// if (isArray!(T))
+    Packer pack(T)(in T array) if (isArray!(T))
     {
+        alias typeof(T.init[0]) U;
+
         if (array is null)
             return packNil();
 
@@ -471,7 +473,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T : V[K], V, K)(in T array)// if (isAssociativeArray!(T))
+    Packer pack(T)(in T array) if (isAssociativeArray!(T))
     {
         if (array is null)
             return packNil();
