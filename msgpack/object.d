@@ -229,6 +229,37 @@ struct mp_Object
     }
 
 
+    /// ditto
+    @property T as(T, Args...)(Args args) if (is(T == class))
+    {
+        static if (!__traits(compiles, { T t; t.mp_unpack(this); }))
+            static assert(false, T.stringof ~ " is not MessagePackable object");
+
+        if (type == mp_Type.NIL)
+            return null;
+
+        T object = new T(args);
+
+        object.mp_unpack(this);
+
+        return object;
+    }
+
+
+    /// ditto
+    @property T as(T)() if (is(T == struct))
+    {
+        static if (!__traits(compiles, { T t; t.mp_unpack(this); }))
+            static assert(false, T.stringof ~ "is not MessagePackable object");
+
+        T obj;
+
+        obj.mp_unpack(this);
+
+        return obj;
+    }
+
+
     /**
      * Comparison for equality.
      */
@@ -341,4 +372,34 @@ unittest
     assert(object               != other);
     assert(object.type          == mp_Type.MAP);
     assert(object.as!(int[int]) == [1:2]);
+
+    object = mp_Object(10UL);
+
+    // struct
+    static struct S
+    {
+        ulong num;
+
+        void mp_unpack(mp_Object object) { num = object.via.uinteger; }
+    }
+
+    S s = object.as!(S);
+    assert(s.num == 10);
+
+    // class
+    static class C
+    {
+        ulong num;
+
+        void mp_unpack(mp_Object object) { num = object.via.uinteger; }
+    }
+
+    C c = object.as!(C);
+    assert(c.num == 10);
+
+    /* 
+     * non-MessagePackable object is stopped by static assert
+     * static struct NonMessagePackable {}
+     * auto nonMessagePackable = object.as!(NonMessagePackable);
+     */
 }

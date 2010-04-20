@@ -489,6 +489,30 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
     }
 
 
+    /// ditto
+    Packer pack(T)(in T object) if (is(Unqual!T == class))
+    {
+        static if (!__traits(compiles, { T t; t.mp_pack(this); }))
+            static assert(false, T.stringof ~ " is not MessagePackable object");
+
+        object.mp_pack(this);
+
+        return this;
+    }
+
+
+    /// ditto
+    Packer pack(T)(ref T object) if (is(Unqual!T == struct))
+    {
+        static if (!__traits(compiles, { T t; t.mp_pack(this); }))
+            static assert(false, T.stringof ~ " is not MessagePackable object");
+
+        object.mp_pack(this);
+
+        return this;
+    }
+
+
     /**
      * Serializes type-information to buffer.
      *
@@ -772,6 +796,42 @@ unittest
                     assert(memcmp(&buffer.data[1], &answer, uint.sizeof) == 0);
                 }
             }
+        }
+    }
+    { // user defined
+        {
+            struct S
+            {
+                uint num = uint.max;
+
+                void mp_pack(P)(ref P p) const { p.packArray(1); p.pack(num); }
+            }
+
+            mixin DefinePacker; S test;
+
+            packer.pack(test);
+
+            assert(buffer.data[0] == (Format.ARRAY | 1));
+            assert(buffer.data[1] ==  Format.UINT32);
+            assert(memcmp(&buffer.data[2], &test.num, uint.sizeof) == 0);
+        }
+        {
+            class C
+            {
+                uint num;
+
+                this(uint n) { num = n; }
+
+                void mp_pack(P)(ref P p) const { p.packArray(1); p.pack(num); }
+            }
+
+            mixin DefinePacker; C test = new C(ushort.max);
+
+            packer.pack(test);
+
+            assert(buffer.data[0] == (Format.ARRAY | 1));
+            assert(buffer.data[1] ==  Format.UINT16);
+            assert(memcmp(&buffer.data[2], &test.num, ushort.sizeof) == 0);
         }
     }
 }
