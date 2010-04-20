@@ -9,10 +9,13 @@
  */
 module msgpack.unpacker;
 
-import msgpack.common;
-import msgpack.object;
+public import msgpack.object;
 
 import std.array;  // for Range
+
+import msgpack.common;
+
+version(unittest) import msgpack.packer, msgpack.buffer;
 
 
 /**
@@ -642,8 +645,6 @@ Unpacker unpacker(in ubyte[] target, size_t bufferSize = 8192)
     return typeof(return)(target, bufferSize);
 }
 
-
-version(unittest) import msgpack.packer, msgpack.buffer;
 
 unittest
 {

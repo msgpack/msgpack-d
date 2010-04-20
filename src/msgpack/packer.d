@@ -9,10 +9,12 @@
  */
 module msgpack.packer;
 
-import msgpack.common;
-
 import std.traits;
 import std.typetuple;
+
+import msgpack.common;
+
+version(unittest) import std.c.string, msgpack.buffer;
 
 
 /**
@@ -640,10 +642,6 @@ Packer!(Buffer) packer(Buffer)(Buffer buffer)
 
 version (unittest) 
 {
-    import msgpack.buffer;
-
-    import std.c.string;
-
     mixin template DefinePacker()
     {
         SimpleBuffer buffer; Packer!(SimpleBuffer*) packer = packer(&buffer);

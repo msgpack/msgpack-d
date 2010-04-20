@@ -38,6 +38,8 @@ else
     }
 }
 
+version(unittest) import std.file : remove;
+
 
 /**
  * $(D SimpleBuffer) is a wrapper for $(D ubyte[])
@@ -608,8 +610,6 @@ FileBuffer fileBuffer(ref File file, bool isCache = false)
     return typeof(return)(file, isCache);
 }
 
-
-version(unittest) import std.file : remove;
 
 unittest
 {

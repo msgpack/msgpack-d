@@ -9,8 +9,9 @@
  */
 module msgpack.msgpack;
 
+public import msgpack.object;
+
 import msgpack.buffer;
-import msgpack.object;
 import msgpack.packer;
 import msgpack.unpacker;
 
