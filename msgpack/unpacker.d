@@ -19,18 +19,34 @@ import std.array;  // for Range
  * $(D UnpackException) is thrown on parse error
  */
 class UnpackException : Exception
- { 
-     this(string message)
-     { 
-         super(message);
-     }
- }
+{ 
+    this(string message)
+    { 
+        super(message);
+    }
+}
 
 
 /**
  * $(D Unpacker) is a $(D MessagePack) stream deserializer
  *
+ * $(D Unpacker) becomes a $(D InputRange) if deserialized Array object.
  * This implementation supports zero copy deserialization of Raw object.
+ *
+ * Example:
+-----
+...
+auto unpacker = unpacker(serializedData);
+
+while(unpacker.execute()) {
+    foreach (obj; unpacker) {
+        // do stuff
+    }
+}
+
+if (unpacker.size)
+    throw new Exception("Message is too large");
+-----
  */
 struct Unpacker
 {
@@ -189,7 +205,7 @@ struct Unpacker
      * Skips unparsed buffer.
      *
      * Params:
-     *  size = the number to skip
+     *  size = the number to skip.
      */
     nothrow void skip(in size_t size)
     {
@@ -615,8 +631,11 @@ struct Unpacker
  * Helper for $(D Unpacker) construction.
  *
  * Params:
- *  target     = byte buffer to deserialize
- *  bufferSize = size limit of buffer size
+ *  target     = byte buffer to deserialize.
+ *  bufferSize = size limit of buffer size.
+ *
+ * Returns:
+ *  a $(D Unpacker) object instantiated and initialized according to the arguments.
  */
 Unpacker unpacker(in ubyte[] target, size_t bufferSize = 8192)
 {

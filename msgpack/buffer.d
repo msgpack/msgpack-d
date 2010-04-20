@@ -268,6 +268,9 @@ struct DeflationBuffer
  *  level      = Compression level for deflation.
  *  bufferSize = Initial-value of buffer content.
  *
+ * Returns:
+ *  a $(D DeflationBuffer) object instantiated and initialized according to the arguments.
+ *
  * Throws:
  *  $(D ZlibException), if initialization of deflation-stream failed.
  */
@@ -486,6 +489,9 @@ struct VRefBuffer
  * Params:
  *  refSize   = the threshold of writing value or storing reference.
  *  chunkSize = the default size of chunk for allocation.
+ *
+ * Returns:
+ *  a $(D VRefBuffer) object instantiated and initialized according to the arguments.
  */
 VRefBuffer vrefBuffer(in size_t refSize = 32, in size_t chunkSize = 8192)
 {
@@ -525,7 +531,7 @@ unittest
 struct FileBuffer
 {
   private:
-    File*        file_;     // stream to write
+    File         file_;     // stream to write
     bool         isCache_;  // indicates whether caches content
     SimpleBuffer cache_;    // buffer for cache
 
@@ -538,7 +544,7 @@ struct FileBuffer
      *  file    = the pointer to $(D File).
      *  isCache = caching content if true.
      */
-    this(File* file, bool isCache = false)
+    this(ref File file, bool isCache = false)
     {
         file_    = file;
         isCache_ = isCache;
@@ -593,8 +599,11 @@ struct FileBuffer
  * Params:
  *  file    = the pointer to $(D File).
  *  isCache = caching content if true.
+ *
+ * Returns:
+ *  a $(D FileBuffer) object instantiated and initialized according to the arguments.
  */
-FileBuffer fileBuffer(File* file, bool isCache = false)
+FileBuffer fileBuffer(ref File file, bool isCache = false)
 {
     return typeof(return)(file, isCache);
 }
@@ -609,7 +618,7 @@ unittest
 
     { // output to name file
         auto output = File(name, "wb");
-        auto buffer = fileBuffer(&output, true);
+        auto buffer = fileBuffer(output, true);
 
         foreach (v; tests)
             buffer.write(v);

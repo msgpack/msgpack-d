@@ -628,6 +628,9 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
  *
  * Params:
  *  buffer = the buffer to write.
+ *
+ * Returns:
+ *  a $(D Packer) object instantiated and initialized according to the arguments.
  */
 Packer!(Buffer) packer(Buffer)(Buffer buffer)
 {
@@ -660,7 +663,7 @@ unittest
             assert(value == result[i]);
     }
     { // uint *
-        struct UTest { ubyte format; ulong value; }
+        static struct UTest { ubyte format; ulong value; }
 
         enum : ulong { A = ubyte.max, B = ushort.max, C = uint.max, D = ulong.max }
 
@@ -699,7 +702,7 @@ unittest
         }
     }
     { // int *
-        struct STest { ubyte format; long value; }
+        static struct STest { ubyte format; long value; }
 
         enum : long { A = byte.min, B = short.min, C = int.min, D = long.min }
 
@@ -738,9 +741,9 @@ unittest
         }
     }
     { // fload, double
-        struct FTest { ubyte format; double value; }
-        union _f { float  f; uint  i; }
-        union _d { double f; ulong i; }
+        static struct FTest { ubyte format; double value; }
+        static union _f { float  f; uint  i; }
+        static union _d { double f; ulong i; }
 
         static FTest[] tests = [
             {Format.FLOAT,  float.min},
@@ -763,7 +766,7 @@ unittest
         }
     }
     { // container
-        struct Test { ubyte format; size_t value; }
+        static struct Test { ubyte format; size_t value; }
 
         enum : ulong { A = 16 / 2, B = ushort.max, C = uint.max }
 
@@ -800,7 +803,7 @@ unittest
     }
     { // user defined
         {
-            struct S
+            static struct S
             {
                 uint num = uint.max;
 
@@ -816,7 +819,7 @@ unittest
             assert(memcmp(&buffer.data[2], &test.num, uint.sizeof) == 0);
         }
         {
-            class C
+            static class C
             {
                 uint num;
 

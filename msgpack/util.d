@@ -94,7 +94,7 @@ version(unittest) import msgpack.packer, msgpack.buffer, msgpack.unpacker;
 unittest
 {
     { // all members
-        struct S
+        static struct S
         {
             uint num; string str;
             mixin MessagePackable;
@@ -112,7 +112,7 @@ unittest
         assert(result.str == "Hi!");
     }
     { // member select
-        class C
+        static class C
         {
             uint num; string str;
 
