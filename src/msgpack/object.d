@@ -261,6 +261,49 @@ struct mp_Object
 
 
     /**
+     * Special method called by $(D Packer).
+     *
+     * Params:
+     *  packer = a serializer.
+     */
+    void mp_pack(Packer)(ref Packer packer) const
+    {
+        final switch (type) {
+        case mp_Type.NIL:
+            packer.packNil();
+            break;
+        case mp_Type.BOOLEAN:
+            packer.pack(via.boolean);
+            break;
+        case mp_Type.POSITIVE_INTEGER:
+            packer.pack(via.uinteger);
+            break;
+        case mp_Type.NEGATIVE_INTEGER:
+            packer.pack(via.integer);
+            break;
+        case mp_Type.FLOAT:
+            packer.pack(via.floating);
+            break;
+        case mp_Type.RAW:
+            packer.pack(via.raw);
+            break;
+        case mp_Type.ARRAY:
+            packer.packArray(via.array.length);
+            foreach (elem; via.array)
+                elem.mp_pack(packer);
+            break;
+        case mp_Type.MAP:
+            packer.packMap(via.map.length);
+            foreach (kv; via.map) {
+                kv.key.mp_pack(packer);
+                kv.value.mp_pack(packer);
+            }
+            break;
+        }
+    }
+
+
+    /**
      * Comparison for equality.
      */
     bool opEquals(ref const mp_Object other) const
