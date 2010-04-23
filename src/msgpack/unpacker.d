@@ -446,14 +446,14 @@ struct Unpacker
                     goto Lpush;
                 case State.RAW16:
                     trail = load16To!uint(buffer_[base..base + trail]);
-                    if (trail)
+                    if (trail == 0)
                         goto Lraw;
                     state = State.RAW;
                     cur++;
                     goto Lstart;
                 case State.RAW32:
                     trail = load32To!uint(buffer_[base..base + trail]);
-                    if (trail)
+                    if (trail == 0)
                         goto Lraw;
                     state = State.RAW;
                     cur++;
@@ -609,7 +609,7 @@ struct Unpacker
             limit_ = used_ + size;
 
         // deserializing state is mid-flow(buffer has non-parsed data yet)
-        if (offset_) {
+        if (offset_ > 0) {
             auto notParsed  = used_ - offset_;
             auto restBuffer = buffer_[offset_..used_];
 
