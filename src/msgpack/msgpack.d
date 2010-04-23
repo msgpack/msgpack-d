@@ -19,20 +19,29 @@ version(unittest) import msgpack.common;
 
 
 /**
- * Serializes $(D_PARAM value).
+ * Serializes $(D_PARAM args).
+ *
+ * Single object if $(D_PARAM args) lenght equals 1,
+ * otherwise array object.
  *
  * Params:
- *  value = the content to serialize.
+ *  args = the contents to serialize.
  *
  * Returns:
  *  a serialized data.
  */
-ubyte[] pack(T)(in T value)
+ubyte[] pack(Args...)(in Args args)
 {
     SimpleBuffer buffer;
     auto packer = packer(&buffer);
 
-    packer.pack(value);
+    static if (Args.length == 1) {
+        packer.pack(args[0]);
+    } else {
+        packer.packArray(Args.length);
+        foreach (arg; args)
+            packer.pack(arg);
+    }
 
     return packer.buffer.data;
 }
@@ -40,9 +49,16 @@ ubyte[] pack(T)(in T value)
 
 unittest
 {
-    auto result = pack(false);
+    auto serialized = pack(false);
 
-    assert(result[0] == Format.FALSE);
+    assert(serialized[0] == Format.FALSE);
+
+    auto deserialized = unpack(pack(1, true, "Foo"));
+
+    assert(deserialized.type == mp_Type.ARRAY);
+    assert(deserialized.via.array[0].type == mp_Type.POSITIVE_INTEGER);
+    assert(deserialized.via.array[1].type == mp_Type.BOOLEAN);
+    assert(deserialized.via.array[2].type == mp_Type.RAW);
 }
 
 
