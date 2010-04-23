@@ -158,7 +158,7 @@ struct Unpacker
      * Returns:
      *  the reference of internal buffer.
      */
-    @property nothrow ref ubyte[] buffer()
+    @property nothrow ubyte[] buffer()
     {
         return buffer_;
     }
