@@ -96,7 +96,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
      * Returns:
      *  the buffer.
      */
-    @property Buffer buffer()
+    @property nothrow Buffer buffer()
     {
         return buffer_;
     }
@@ -111,14 +111,14 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
      * Returns:
      *  this to method chain.
      */
-    Packer pack(T)(in T value) if (is(Unqual!T == bool))
+    ref Packer pack(T)(in T value) if (is(Unqual!T == bool))
     {
         return value ? packTrue() : packFalse();
     }
 
 
     /// ditto
-    Packer pack(T)(in T value) if (is(Unqual!T == ubyte))
+    ref Packer pack(T)(in T value) if (is(Unqual!T == ubyte))
     {
         if (value < (1 << 7)) {
             // fixnum
@@ -135,7 +135,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T)(in T value) if (is(Unqual!T == ushort))
+    ref Packer pack(T)(in T value) if (is(Unqual!T == ushort))
     {
         if (value < (1 << 7)) {
             // fixnum
@@ -159,7 +159,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T)(in T value) if (is(Unqual!T == uint))
+    ref Packer pack(T)(in T value) if (is(Unqual!T == uint))
     {
         if (value < (1 << 8)) {
             if (value < (1 << 7)) {
@@ -194,7 +194,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T)(in T value) if (is(Unqual!T == ulong))
+    ref Packer pack(T)(in T value) if (is(Unqual!T == ulong))
     {
         if (value < (1UL << 8)) {
             if (value < (1UL << 7)) {
@@ -236,7 +236,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T)(in T value) if (is(Unqual!T == byte))
+    ref Packer pack(T)(in T value) if (is(Unqual!T == byte))
     {
         if (value < -(1 << 5)) {
             // int 8
@@ -253,7 +253,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T)(in T value) if (is(Unqual!T == short))
+    ref Packer pack(T)(in T value) if (is(Unqual!T == short))
     {
         if (value < -(1 << 5)) {
             if (value < -(1 << 7)) {
@@ -293,7 +293,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T)(in T value) if (is(Unqual!T == int))
+    ref Packer pack(T)(in T value) if (is(Unqual!T == int))
     {
         if (value < -(1 << 5)) {
             if (value < -(1 << 15)) {
@@ -347,7 +347,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T)(in T value) if (is(Unqual!T == long))
+    ref Packer pack(T)(in T value) if (is(Unqual!T == long))
     {
         if (value < -(1L << 5)) {
             if (value < -(1L << 15)) {
@@ -423,7 +423,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T)(in T value) if (is(Unqual!T == float))
+    ref Packer pack(T)(in T value) if (is(Unqual!T == float))
     {
         union _ { float f; uint i; }
 
@@ -438,7 +438,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T)(in T value) if (is(Unqual!T == double))
+    ref Packer pack(T)(in T value) if (is(Unqual!T == double))
     {
         union _ { double f; ulong i; }
 
@@ -453,7 +453,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T)(in T array) if (isArray!(T))
+    ref Packer pack(T)(in T array) if (isArray!(T))
     {
         alias typeof(T.init[0]) U;
 
@@ -477,7 +477,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T)(in T array) if (isAssociativeArray!(T))
+    ref Packer pack(T)(in T array) if (isAssociativeArray!(T))
     {
         if (array is null)
             return packNil();
@@ -508,7 +508,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
      * Returns:
      *  this to method chain.
      */
-    Packer pack(T)(in T object) if (is(Unqual!T == class))
+    ref Packer pack(T)(in T object) if (is(Unqual!T == class))
     {
         static if (!__traits(compiles, { T t; t.mp_pack(this); }))
             static assert(false, T.stringof ~ " is not MessagePackable object");
@@ -520,7 +520,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer pack(T)(ref T object) if (is(Unqual!T == struct))
+    ref Packer pack(T)(ref T object) if (is(Unqual!T == struct))
     {
         static if (__traits(compiles, { T t; t.mp_pack(this); })) {
             object.mp_pack(this);
@@ -543,7 +543,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
      * Returns:
      *  this to method chain.
      */
-    Packer packArray(in size_t length)
+    ref Packer packArray(in size_t length)
     {
         if (length < 16) {
             ubyte temp = Format.ARRAY | cast(ubyte)length;
@@ -567,7 +567,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer packMap(in size_t length)
+    ref Packer packMap(in size_t length)
     {
         if (length < 16) {
             ubyte temp = Format.MAP | cast(ubyte)length;
@@ -591,7 +591,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer packRaw(in size_t length)
+    ref Packer packRaw(in size_t length)
     {
         if (length < 32) {
             ubyte temp = Format.RAW | cast(ubyte)length;
@@ -620,7 +620,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
      * Returns:
      *  this to method chain.
      */
-    Packer packNil()
+    ref Packer packNil()
     {
         buffer_.write(Format.NIL);
         return this;
@@ -628,7 +628,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer packTrue()
+    ref Packer packTrue()
     {
         buffer_.write(Format.TRUE);
         return this;
@@ -636,7 +636,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
 
     /// ditto
-    Packer packFalse()
+    ref Packer packFalse()
     {
         buffer_.write(Format.FALSE);
         return this;
