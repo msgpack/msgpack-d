@@ -18,6 +18,9 @@ import msgpack.common;
 version(unittest) import msgpack.packer, msgpack.buffer;
 
 
+@trusted:
+
+
 /**
  * $(D UnpackException) is thrown on parse error
  */

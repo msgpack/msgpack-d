@@ -43,6 +43,9 @@ else
 version(unittest) import std.file : remove;
 
 
+@trusted:
+
+
 /**
  * $(D SimpleBuffer) is a wrapper for $(D ubyte[])
  */

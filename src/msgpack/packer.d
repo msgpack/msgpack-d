@@ -17,6 +17,9 @@ import msgpack.common;
 version(unittest) import std.c.string, std.typecons, msgpack.buffer;
 
 
+@trusted:
+
+
 /**
  * $(D isWritableBuffer) is a constraint for buffer that $(D Packer) uses.
  *

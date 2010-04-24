@@ -20,6 +20,9 @@ import std.traits;
 version(unittest) import std.typecons;
 
 
+@trusted:
+
+
 /**
  * $(D MessagePack) object type
  */

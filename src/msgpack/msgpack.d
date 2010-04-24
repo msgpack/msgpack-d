@@ -18,6 +18,9 @@ import msgpack.unpacker;
 version(unittest) import msgpack.common;
 
 
+@trusted:
+
+
 /**
  * Serializes $(D_PARAM args).
  *

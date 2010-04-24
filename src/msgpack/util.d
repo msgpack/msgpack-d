@@ -12,6 +12,9 @@ module msgpack.util;
 public import msgpack.object;
 
 
+@trusted:
+
+
 /**
  * Handy helper for creating MessagePackable object.
  *

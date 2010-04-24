@@ -23,6 +23,10 @@ else
 }
 
 
+@trusted:
+package:
+
+
 /**
  * MessagePack type-information format
  *
