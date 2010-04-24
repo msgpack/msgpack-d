@@ -11,6 +11,7 @@ module msgpack.object;
 
 /*
  * Avoids compile error related object module. Bug or Spec?
+ * http://d.puremagic.com/issues/show_bug.cgi?id = 4102
  */
 import object;
 

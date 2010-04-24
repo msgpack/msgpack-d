@@ -11,6 +11,8 @@
  *  $(LI FileBuffer)
  * )
  *
+ * Some helper functions avoid $(LINK http://d.puremagic.com/issues/show_bug.cgi?id=3438)
+ *
  * Copyright: Copyright Masahiro Nakagawa 2010.
  * License:   <a href = "http://www.boost.org/LICENSE_1_0.txt">Boost License 1.0</a>.
  * Authors:   Masahiro Nakagawa
@@ -122,7 +124,7 @@ struct DeflationBuffer
      *  bufferSize = Initial-value of buffer content.
      *
      * Throws:
-     *  $(D ZlibException), if initialization of deflation-stream failed.
+     *  $(D ZlibException) if initialization of deflation-stream failed.
      */
     this(in int level = Z_DEFAULT_COMPRESSION, in size_t bufferSize = 8192)
     in
@@ -189,7 +191,7 @@ struct DeflationBuffer
      * Resets the deflation-stream, but some state will keep.
      *
      * Throws:
-     *  $(D ZlibException), if reset of deflation-stream failed.
+     *  $(D ZlibException) if reset of deflation-stream failed.
      */
     void reset()
     {
@@ -207,7 +209,7 @@ struct DeflationBuffer
      *  value = the content to write.
      *
      * Throws:
-     *  $(D ZlibException), if deflation failed.
+     *  $(D ZlibException) if deflation failed.
      */
     void write(in ubyte value)
     {
@@ -239,7 +241,7 @@ struct DeflationBuffer
      *  status = return code from zlib function.
      *
      * Throws:
-     *  $(D ZlibException), if $(D_PARAM status) isn't $(D Z_OK).
+     *  $(D ZlibException) if $(D_PARAM status) isn't $(D Z_OK).
      */
     void check(in int status)
     {
@@ -274,7 +276,7 @@ struct DeflationBuffer
  *  a $(D DeflationBuffer) object instantiated and initialized according to the arguments.
  *
  * Throws:
- *  $(D ZlibException), if initialization of deflation-stream failed.
+ *  $(D ZlibException) if initialization of deflation-stream failed.
  */
 DeflationBuffer deflationBuffer(in int level = Z_DEFAULT_COMPRESSION, in size_t bufferSize = 8192)
 {
