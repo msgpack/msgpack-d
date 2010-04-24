@@ -14,7 +14,7 @@ import std.typetuple;
 
 import msgpack.common;
 
-version(unittest) import std.c.string, msgpack.buffer;
+version(unittest) import std.c.string, std.typecons, msgpack.buffer;
 
 
 /**
@@ -465,7 +465,6 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
             buffer_.write(raw);
         } else {
             packArray(array.length);
-
             foreach (elem; array)
                 pack(elem);
         }
@@ -481,7 +480,6 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
             return packNil();
 
         packMap(array.length);
-
         foreach (key, value; array) {
             pack(key);
             pack(value);
@@ -491,7 +489,22 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
     }
 
 
-    /// ditto
+    /**
+     * Serializes $(D_PARAM object) and writes to buffer.
+     *
+     * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D mp_pack) method.
+     * $(D mp_pack) signature is:
+    -----
+    void mp_pack(Packer)(ref Packer packer) const
+    -----
+     * Assumes $(D std.typecons.Tuple) if $(D_KEYWORD struct) doens't implement $(D mp_pack).
+     *
+     * Params:
+     *  object = the content to serialize.
+     *
+     * Returns:
+     *  this to method chain.
+     */
     Packer pack(T)(in T object) if (is(Unqual!T == class))
     {
         static if (!__traits(compiles, { T t; t.mp_pack(this); }))
@@ -506,10 +519,13 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
     /// ditto
     Packer pack(T)(ref T object) if (is(Unqual!T == struct))
     {
-        static if (!__traits(compiles, { T t; t.mp_pack(this); }))
-            static assert(false, T.stringof ~ " is not MessagePackable object");
-
-        object.mp_pack(this);
+        static if (__traits(compiles, { T t; t.mp_pack(this); })) {
+            object.mp_pack(this);
+        } else {  // std.typecons.Tuple
+            packArray(object.field.length);
+            foreach (f; object.field)
+                pack(f);
+        }
 
         return this;
     }
@@ -522,7 +538,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
      *  length = the length of container.
      *
      * Returns:
-     *  this.
+     *  this to method chain.
      */
     Packer packArray(in size_t length)
     {
@@ -599,7 +615,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
      * Serializes the unique value.
      *
      * Returns:
-     *  this.
+     *  this to method chain.
      */
     Packer packNil()
     {
@@ -815,6 +831,17 @@ unittest
             assert(buffer.data[0] == (Format.ARRAY | 1));
             assert(buffer.data[1] ==  Format.UINT32);
             assert(memcmp(&buffer.data[2], &test.num, uint.sizeof) == 0);
+        }
+        {
+            mixin DefinePacker; auto test = tuple(true, false, uint.max);
+
+            packer.pack(test);
+
+            assert(buffer.data[0] == (Format.ARRAY | 3));
+            assert(buffer.data[1] ==  Format.TRUE);
+            assert(buffer.data[2] ==  Format.FALSE);
+            assert(buffer.data[3] ==  Format.UINT32);
+            assert(memcmp(&buffer.data[4], &test.field[2], uint.sizeof) == 0);
         }
         {
             static class C

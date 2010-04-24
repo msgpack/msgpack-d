@@ -17,6 +17,8 @@ import object;
 
 import std.traits;
 
+version(unittest) import std.typecons;
+
 
 /**
  * $(D MessagePack) object type
@@ -230,7 +232,22 @@ struct mp_Object
     }
 
 
-    /// ditto
+    /**
+     * Converts to $(D_PARAM T) type.
+     *
+     * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D mp_unpack) method.
+     * $(D mp_unpack) signature is:
+    -----
+    void mp_unpack(mp_Object object)
+    -----
+     * Assumes $(D std.typecons.Tuple) if $(D_KEYWORD struct) doens't implement $(D mp_unpack).
+     *
+     * Params:
+     *  args = arguments to class constructor(class only).
+     *
+     * Returns:
+     *  converted value.
+     */
     @property T as(T, Args...)(Args args) if (is(T == class))
     {
         static if (!__traits(compiles, { T t; t.mp_unpack(this); }))
@@ -250,12 +267,14 @@ struct mp_Object
     /// ditto
     @property T as(T)() if (is(T == struct))
     {
-        static if (!__traits(compiles, { T t; t.mp_unpack(this); }))
-            static assert(false, T.stringof ~ "is not MessagePackable object");
-
         T obj;
 
-        obj.mp_unpack(this);
+        static if (__traits(compiles, { T t; t.mp_unpack(this); })) {
+            obj.mp_unpack(this);
+        } else {
+            foreach (i, Type; T.Types)
+                obj.field[i] = via.array[i].as!(Type);
+        }
 
         return obj;
     }
@@ -440,6 +459,14 @@ unittest
 
     C c = object.as!(C);
     assert(c.num == 10);
+
+    // std.typecons.Tuple
+    object = mp_Object([mp_Object(true), mp_Object(1UL), mp_Object(cast(ubyte[])"Hi!")]);
+
+    auto tuple = object.as!(Tuple!(bool, uint, string));
+    assert(tuple.field[0] == true);
+    assert(tuple.field[1] == 1u);
+    assert(tuple.field[2] == "Hi!");
 
     /* 
      * non-MessagePackable object is stopped by static assert
