@@ -74,14 +74,14 @@ struct SimpleBuffer
      * Params:
      *  value = the content to write.
      */
-    void write(in ubyte value)
+    void put(in ubyte value)
     {
         data_ ~= value;
     }
 
 
     /// ditto
-    void write(in ubyte[] values)
+    void put(in ubyte[] values)
     {
         data_ ~= values;
     }
@@ -95,10 +95,10 @@ unittest
     ubyte[] tests = [1, 2];
 
     foreach (v; tests)
-        buffer.write(v);
+        buffer.put(v);
     assert(buffer.data == tests);
 
-    buffer.write(tests);
+    buffer.put(tests);
     assert(buffer.data ==  tests ~ tests);
 }
 
@@ -214,15 +214,15 @@ struct DeflationBuffer
      * Throws:
      *  $(D ZlibException) if deflation failed.
      */
-    void write(in ubyte value)
+    void put(in ubyte value)
     {
         ubyte[1] values = [value];
-        write(values);
+        put(values);
     }
 
 
     /// ditto
-    void write(in ubyte[] values)
+    void put(in ubyte[] values)
     {
         stream_.next_in  = cast(ubyte*)values.ptr;
         stream_.avail_in = values.length;
@@ -301,8 +301,8 @@ unittest
     ubyte[] tests = [1, 2];
 
     foreach (v; tests)
-        buffer.write(v);
-    buffer.write(tests);
+        buffer.put(v);
+    buffer.put(tests);
     buffer.flush;
 
     // inflation
@@ -403,7 +403,7 @@ struct VRefBuffer
      * Params:
      *  value = the content to write.
      */
-    void write(in ubyte value)
+    void put(in ubyte value)
     {
         ubyte[1] values = [value];
         writeCopy(values);
@@ -417,7 +417,7 @@ struct VRefBuffer
      * Params:
      *  values = the content to write.
      */
-    void write(in ubyte[] values)
+    void put(in ubyte[] values)
     {
         if (values.length < RefSize)
             writeCopy(values);
@@ -512,8 +512,8 @@ unittest
 
     ubyte[] tests = [1, 2];
     foreach (v; tests)
-        buffer.write(v);
-    buffer.write(tests);
+        buffer.put(v);
+    buffer.put(tests);
 
     assert(buffer.data == tests, "writeCopy failed");
 
@@ -579,18 +579,18 @@ struct FileBuffer
      * Throws:
      *  $(D StdioException) if file closed.
      */
-    void write(in ubyte value)
+    void put(in ubyte value)
     {
         ubyte[1] values = [value];
-        write(values);
+        put(values);
     }
 
 
     /// ditto
-    void write(in ubyte[] values)
+    void put(in ubyte[] values)
     {
         if (isCache_)
-            cache_.write(values);
+            cache_.put(values);
 
         if (file_.isOpen)
             file_.rawWrite(values);
@@ -626,8 +626,8 @@ unittest
         auto buffer = fileBuffer(output, true);
 
         foreach (v; tests)
-            buffer.write(v);
-        buffer.write(tests);
+            buffer.put(v);
+        buffer.put(tests);
 
         assert(buffer.data == tests ~ tests);
     }

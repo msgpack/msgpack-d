@@ -9,6 +9,7 @@
  */
 module msgpack.packer;
 
+import std.range;
 import std.traits;
 import std.typetuple;
 
@@ -18,32 +19,6 @@ version(unittest) import std.c.string, std.typecons, msgpack.buffer;
 
 
 @trusted:
-
-
-/**
- * $(D isWritableBuffer) is a constraint for buffer that $(D Packer) uses.
- *
- * Returns true if $(D_PARAM Buffer) is an byte buffer that defines write method.
- * The following code is a concept example.
------
-Buffer  buffer;
-ubyte[] values = [1];
-
-buffer.write(values[0]);
-buffer.write(values);
------
- */
-template isWritableBuffer(Buffer)
-{
-    // which is better __traits or is(typeof({}()))?
-    enum bool isWritableBuffer = __traits(compiles,
-    {
-        Buffer  buffer;
-        ubyte[] values = [1];
-        buffer.write(values[0]);
-        buffer.write(values);
-    });
-}
 
 
 /**
@@ -66,7 +41,7 @@ stdout.rawWrite(buffer.data);  // or packer.buffer.data
  * Some buffers that Packer can use are in $(D msgpack.buffer),
  * and you use another object if the $(D Buffer) object meets $(D isWritableBuffer).
  */
-struct Packer(Buffer) if (isWritableBuffer!(Buffer))
+struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte)  && isOutputRange!(Buffer, ubyte[]))
 {
   private:
     alias .Packer!(Buffer) Packer;
@@ -122,12 +97,12 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
     {
         if (value < (1 << 7)) {
             // fixnum
-            buffer_.write(take8from(value));
+            buffer_.put(take8from(value));
         } else {
             // uint 8
             store_[0] = Format.UINT8;
             store_[1] = take8from(value);
-            buffer_.write(store_[0..Offset + ubyte.sizeof]);
+            buffer_.put(store_[0..Offset + ubyte.sizeof]);
         }
 
         return this;
@@ -139,19 +114,19 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
     {
         if (value < (1 << 7)) {
             // fixnum
-            buffer_.write(take8from!16(value));
+            buffer_.put(take8from!16(value));
         } else if (value < (1 << 8)) {
             // uint 8
             store_[0] = Format.UINT8;
             store_[1] = take8from!16(value);
-            buffer_.write(store_[0..Offset + ubyte.sizeof]);
+            buffer_.put(store_[0..Offset + ubyte.sizeof]);
         } else {
             // uint 16
             const temp = convertEndianTo!16(value);
 
             store_[0] = Format.UINT16;
             *cast(ushort*)&store_[Offset] = temp;
-            buffer_.write(store_[0..Offset + ushort.sizeof]);
+            buffer_.put(store_[0..Offset + ushort.sizeof]);
         }
 
         return this;
@@ -164,12 +139,12 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
         if (value < (1 << 8)) {
             if (value < (1 << 7)) {
                 // fixnum
-                buffer_.write(take8from!32(value));
+                buffer_.put(take8from!32(value));
             } else {
                 // uint 8
                 store_[0] = Format.UINT8;
                 store_[1] = take8from!32(value);
-                buffer_.write(store_[0..Offset + ubyte.sizeof]);
+                buffer_.put(store_[0..Offset + ubyte.sizeof]);
             }
         } else {
             if (value < (1 << 16)) {
@@ -178,14 +153,14 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
                 store_[0] = Format.UINT16;
                 *cast(ushort*)&store_[Offset] = temp;
-                buffer_.write(store_[0..Offset + ushort.sizeof]);
+                buffer_.put(store_[0..Offset + ushort.sizeof]);
             } else {
                 // uint 32
                 const temp = convertEndianTo!32(value);
 
                 store_[0] = Format.UINT32;
                 *cast(uint*)&store_[Offset] = temp;
-                buffer_.write(store_[0..Offset + uint.sizeof]);
+                buffer_.put(store_[0..Offset + uint.sizeof]);
             }
         }
 
@@ -199,12 +174,12 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
         if (value < (1UL << 8)) {
             if (value < (1UL << 7)) {
                 // fixnum
-                buffer_.write(take8from!64(value));
+                buffer_.put(take8from!64(value));
             } else {
                 // uint 8
                 store_[0] = Format.UINT8;
                 store_[1] = take8from!64(value);
-                buffer_.write(store_[0..Offset + ubyte.sizeof]);
+                buffer_.put(store_[0..Offset + ubyte.sizeof]);
             }
         } else {
             if (value < (1UL << 16)) {
@@ -213,21 +188,21 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
                 store_[0] = Format.UINT16;
                 *cast(ushort*)&store_[Offset] = temp;
-                buffer_.write(store_[0..Offset + ushort.sizeof]);
+                buffer_.put(store_[0..Offset + ushort.sizeof]);
             } else if (value < (1UL << 32)){
                 // uint 32
                 const temp = convertEndianTo!32(value);
 
                 store_[0] = Format.UINT32;
                 *cast(uint*)&store_[Offset] = temp;
-                buffer_.write(store_[0..Offset + uint.sizeof]);
+                buffer_.put(store_[0..Offset + uint.sizeof]);
             } else {
                 // uint 64
                 const temp = convertEndianTo!64(value);
 
                 store_[0] = Format.UINT64;
                 *cast(ulong*)&store_[Offset] = temp;
-                buffer_.write(store_);
+                buffer_.put(store_);
             }
         }
 
@@ -242,10 +217,10 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
             // int 8
             store_[0] = Format.INT8;
             store_[1] = take8from(value);
-            buffer_.write(store_[0..Offset + byte.sizeof]);
+            buffer_.put(store_[0..Offset + byte.sizeof]);
         } else {
             // fixnum
-            buffer_.write(take8from(value));
+            buffer_.put(take8from(value));
         }
 
         return this;
@@ -262,29 +237,29 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
                 store_[0] = Format.INT16;
                 *cast(short*)&store_[Offset] = temp;
-                buffer_.write(store_[0..Offset + short.sizeof]);
+                buffer_.put(store_[0..Offset + short.sizeof]);
             } else {
                 // int 8
                 store_[0] = Format.INT8;
                 store_[1] = take8from!16(value);
-                buffer_.write(store_[0..Offset + byte.sizeof]);
+                buffer_.put(store_[0..Offset + byte.sizeof]);
             }
         } else if (value < (1 << 7)) {
             // fixnum
-            buffer_.write(take8from!16(value));
+            buffer_.put(take8from!16(value));
         } else {
             if (value < (1 << 8)) {
                 // uint 8
                 store_[0] = Format.UINT8;
                 store_[1] = take8from!16(value);
-                buffer_.write(store_[0..Offset + ubyte.sizeof]);                
+                buffer_.put(store_[0..Offset + ubyte.sizeof]);                
             } else {
                 // uint 16
                 const temp = convertEndianTo!16(value);
 
                 store_[0] = Format.UINT16;
                 *cast(ushort*)&store_[Offset] = temp;
-                buffer_.write(store_[0..Offset + ushort.sizeof]);
+                buffer_.put(store_[0..Offset + ushort.sizeof]);
             }
         }
 
@@ -302,43 +277,43 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
                 store_[0] = Format.INT32;
                 *cast(int*)&store_[Offset] = temp;
-                buffer_.write(store_[0..Offset + int.sizeof]);
+                buffer_.put(store_[0..Offset + int.sizeof]);
             } else if (value < -(1 << 7)) {
                 // int 16
                 const temp = convertEndianTo!16(value);
 
                 store_[0] = Format.INT16;
                 *cast(short*)&store_[Offset] = temp;
-                buffer_.write(store_[0..Offset + short.sizeof]);
+                buffer_.put(store_[0..Offset + short.sizeof]);
             } else {
                 // int 8
                 store_[0] = Format.INT8;
                 store_[1] = take8from!32(value);
-                buffer_.write(store_[0..Offset + byte.sizeof]);
+                buffer_.put(store_[0..Offset + byte.sizeof]);
             }
         } else if (value < (1 << 7)) {
             // fixnum
-            buffer_.write(take8from!32(value));
+            buffer_.put(take8from!32(value));
         } else {
             if (value < (1 << 8)) {
                 // uint 8
                 store_[0] = Format.UINT8;
                 store_[1] = take8from!32(value);
-                buffer_.write(store_[0..Offset + ubyte.sizeof]);
+                buffer_.put(store_[0..Offset + ubyte.sizeof]);
             } else if (value < (1 << 16)) {
                 // uint 16
                 const temp = convertEndianTo!16(value);
 
                 store_[0] = Format.UINT16;
                 *cast(ushort*)&store_[Offset] = temp;
-                buffer_.write(store_[0..Offset + ushort.sizeof]);
+                buffer_.put(store_[0..Offset + ushort.sizeof]);
             } else {
                 // uint 32
                 const temp = convertEndianTo!32(value);
 
                 store_[0] = Format.UINT32;
                 *cast(uint*)&store_[Offset] = temp;
-                buffer_.write(store_[0..Offset + uint.sizeof]);
+                buffer_.put(store_[0..Offset + uint.sizeof]);
             }
         }
 
@@ -357,14 +332,14 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
                     store_[0] = Format.INT64;
                     *cast(long*)&store_[Offset] = temp;
-                    buffer_.write(store_);
+                    buffer_.put(store_);
                 } else {
                     // int 32
                     const temp = convertEndianTo!32(value);
 
                     store_[0] = Format.INT32;
                     *cast(int*)&store_[Offset] = temp;
-                    buffer_.write(store_[0..Offset + int.sizeof]);
+                    buffer_.put(store_[0..Offset + int.sizeof]);
                 }
             } else {
                 if (value < -(1L << 7)) {
@@ -373,31 +348,31 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
                     store_[0] = Format.INT16;
                     *cast(short*)&store_[Offset] = temp;
-                    buffer_.write(store_[0..Offset + short.sizeof]);
+                    buffer_.put(store_[0..Offset + short.sizeof]);
                 } else {
                     // int 8
                     store_[0] = Format.INT8;
                     store_[1] = take8from!64(value);
-                    buffer_.write(store_[0..Offset + byte.sizeof]);
+                    buffer_.put(store_[0..Offset + byte.sizeof]);
                 }
             }
         } else if (value < (1L << 7)) {
             // fixnum
-            buffer_.write(take8from!64(value));
+            buffer_.put(take8from!64(value));
         } else {
             if (value < (1L << 16)) {
                 if (value < (1L << 8)) {
                     // uint 8
                     store_[0] = Format.UINT8;
                     store_[1] = take8from!64(value);
-                    buffer_.write(store_[0..Offset + ubyte.sizeof]);
+                    buffer_.put(store_[0..Offset + ubyte.sizeof]);
                 } else {
                     // uint 16
                     const temp = convertEndianTo!16(value);
 
                     store_[0] = Format.UINT16;
                     *cast(ushort*)&store_[Offset] = temp;
-                    buffer_.write(store_[0..Offset + ushort.sizeof]);
+                    buffer_.put(store_[0..Offset + ushort.sizeof]);
                 }
             } else {
                 if (value < (1L << 32)) {
@@ -406,14 +381,14 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
                     store_[0] = Format.UINT32;
                     *cast(uint*)&store_[Offset] = temp;
-                    buffer_.write(store_[0..Offset + uint.sizeof]);
+                    buffer_.put(store_[0..Offset + uint.sizeof]);
                 } else {
                     // uint 64
                     const temp = convertEndianTo!64(value);
 
                     store_[0] = Format.UINT64;
                     *cast(ulong*)&store_[Offset] = temp;
-                    buffer_.write(store_);
+                    buffer_.put(store_);
                 }
             }
         }
@@ -431,7 +406,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
         store_[0] = Format.FLOAT;
         *cast(uint*)&store_[Offset] = temp;
-        buffer_.write(store_[0..Offset + uint.sizeof]);
+        buffer_.put(store_[0..Offset + uint.sizeof]);
 
         return this;
     }
@@ -446,7 +421,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
 
         store_[0] = Format.DOUBLE;
         *cast(ulong*)&store_[Offset] = temp;
-        buffer_.write(store_);
+        buffer_.put(store_);
 
         return this;
     }
@@ -465,7 +440,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
             ubyte[] raw = cast(ubyte[])array;
 
             packRaw(raw.length);
-            buffer_.write(raw);
+            buffer_.put(raw);
         } else {
             packArray(array.length);
             foreach (elem; array)
@@ -547,19 +522,19 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
     {
         if (length < 16) {
             ubyte temp = Format.ARRAY | cast(ubyte)length;
-            buffer_.write(take8from(temp));
+            buffer_.put(take8from(temp));
         } else if (length < 65536) {
             const temp = convertEndianTo!16(length);
 
             store_[0] = Format.ARRAY16;
             *cast(ushort*)&store_[Offset] = temp;
-            buffer_.write(store_[0..Offset + ushort.sizeof]);
+            buffer_.put(store_[0..Offset + ushort.sizeof]);
         } else {
             const temp = convertEndianTo!32(length);
 
             store_[0] = Format.ARRAY32;
             *cast(uint*)&store_[Offset] = temp;
-            buffer_.write(store_[0..Offset + uint.sizeof]);
+            buffer_.put(store_[0..Offset + uint.sizeof]);
         }
 
         return this;
@@ -571,19 +546,19 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
     {
         if (length < 16) {
             ubyte temp = Format.MAP | cast(ubyte)length;
-            buffer_.write(take8from(temp));
+            buffer_.put(take8from(temp));
         } else if (length < 65536) {
             const temp = convertEndianTo!16(length);
 
             store_[0] = Format.MAP16;
             *cast(ushort*)&store_[Offset] = temp;
-            buffer_.write(store_[0..Offset + ushort.sizeof]);
+            buffer_.put(store_[0..Offset + ushort.sizeof]);
         } else {
             const temp = convertEndianTo!32(length);
 
             store_[0] = Format.MAP32;
             *cast(uint*)&store_[Offset] = temp;
-            buffer_.write(store_[0..Offset + uint.sizeof]);
+            buffer_.put(store_[0..Offset + uint.sizeof]);
         }
 
         return this;
@@ -595,19 +570,19 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
     {
         if (length < 32) {
             ubyte temp = Format.RAW | cast(ubyte)length;
-            buffer_.write(take8from(temp));
+            buffer_.put(take8from(temp));
         } else if (length < 65536) {
             const temp = convertEndianTo!16(length);
 
             store_[0] = Format.RAW16;
             *cast(ushort*)&store_[Offset] = temp;
-            buffer_.write(store_[0..Offset + ushort.sizeof]);
+            buffer_.put(store_[0..Offset + ushort.sizeof]);
         } else {
             const temp = convertEndianTo!32(length);
 
             store_[0] = Format.RAW32;
             *cast(uint*)&store_[Offset] = temp;
-            buffer_.write(store_[0..Offset + uint.sizeof]);
+            buffer_.put(store_[0..Offset + uint.sizeof]);
         }
 
         return this;
@@ -622,7 +597,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
      */
     ref Packer packNil()
     {
-        buffer_.write(Format.NIL);
+        buffer_.put(Format.NIL);
         return this;
     }
 
@@ -630,7 +605,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
     /// ditto
     ref Packer packTrue()
     {
-        buffer_.write(Format.TRUE);
+        buffer_.put(Format.TRUE);
         return this;
     }
 
@@ -638,7 +613,7 @@ struct Packer(Buffer) if (isWritableBuffer!(Buffer))
     /// ditto
     ref Packer packFalse()
     {
-        buffer_.write(Format.FALSE);
+        buffer_.put(Format.FALSE);
         return this;
     }
 }
