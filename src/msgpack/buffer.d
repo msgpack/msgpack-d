@@ -19,6 +19,7 @@
  */
 module msgpack.buffer;
 
+import std.array;
 import std.stdio;
 import std.zlib : ZlibException;  // avoiding Z_* symbols conflict
 
@@ -47,60 +48,9 @@ version(unittest) import std.file : remove;
 
 
 /**
- * $(D SimpleBuffer) is a wrapper for $(D ubyte[])
+ * This alias provides clear name for simple buffer.
  */
-struct SimpleBuffer
-{
-  private:
-    ubyte[] data_;  // internal buffer
-
-
-  public:
-    /**
-     * Forwards to buffer content.
-     *
-     * Returns:
-     *  the available content of buffer.
-     */
-    @property nothrow ubyte[] data()
-    {
-        return data_;
-    }
-
-
-    /**
-     * Writes $(D_PARAM value) to buffer.
-     *
-     * Params:
-     *  value = the content to write.
-     */
-    void put(in ubyte value)
-    {
-        data_ ~= value;
-    }
-
-
-    /// ditto
-    void put(in ubyte[] values)
-    {
-        data_ ~= values;
-    }
-}
-
-
-unittest
-{
-    SimpleBuffer buffer;
-
-    ubyte[] tests = [1, 2];
-
-    foreach (v; tests)
-        buffer.put(v);
-    assert(buffer.data == tests);
-
-    buffer.put(tests);
-    assert(buffer.data ==  tests ~ tests);
-}
+alias Appender!(ubyte[]) SimpleBuffer;
 
 
 /**
@@ -564,7 +514,7 @@ struct FileBuffer
      * Returns:
      *  the cache contents if isCache is true, otherwise null.
      */
-    @property nothrow ubyte[] data()
+    @property /* nothrow */ ubyte[] data() // data method of Appender isn't nothrow
     {
         return isCache_ ? cache_.data : null;
     }

@@ -38,10 +38,9 @@ packer.packNil();     // null
 stdout.rawWrite(buffer.data);  // or packer.buffer.data
 -----
  *
- * Some buffers that Packer can use are in $(D msgpack.buffer),
- * and you use another object if the $(D Buffer) object meets $(D isWritableBuffer).
+ * Some buffers that Packer can use are in $(D msgpack.buffer).
  */
-struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte)  && isOutputRange!(Buffer, ubyte[]))
+struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer, ubyte[]))
 {
   private:
     alias .Packer!(Buffer) Packer;
@@ -202,7 +201,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte)  && isOutputRange!(Buffe
 
                 store_[0] = Format.UINT64;
                 *cast(ulong*)&store_[Offset] = temp;
-                buffer_.put(store_);
+                buffer_.put(store_[0..Offset + ulong.sizeof]);
             }
         }
 
@@ -332,7 +331,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte)  && isOutputRange!(Buffe
 
                     store_[0] = Format.INT64;
                     *cast(long*)&store_[Offset] = temp;
-                    buffer_.put(store_);
+                    buffer_.put(store_[0..Offset + long.sizeof]);
                 } else {
                     // int 32
                     const temp = convertEndianTo!32(value);
@@ -388,7 +387,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte)  && isOutputRange!(Buffe
 
                     store_[0] = Format.UINT64;
                     *cast(ulong*)&store_[Offset] = temp;
-                    buffer_.put(store_);
+                    buffer_.put(store_[0..Offset + ulong.sizeof]);
                 }
             }
         }
@@ -421,7 +420,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte)  && isOutputRange!(Buffe
 
         store_[0] = Format.DOUBLE;
         *cast(ulong*)&store_[Offset] = temp;
-        buffer_.put(store_);
+        buffer_.put(store_[0..Offset + double.sizeof]);
 
         return this;
     }
