@@ -8,10 +8,10 @@
  *  $(LI SimpleBuffer)
  *  $(LI DeflationBuffer)
  *  $(LI VRefBuffer)
- *  $(LI FileBuffer)
+ *  $(LI BinaryFileWriter)
  * )
  *
- * Some helper functions avoid $(LINK http://d.puremagic.com/issues/show_bug.cgi?id=3438)
+ * Some helper functions avoid $(LINK http://d.puremagic.com/issues/show_bug.cgi?id=3438).
  *
  * Copyright: Copyright Masahiro Nakagawa 2010.
  * License:   <a href = "http://www.boost.org/LICENSE_1_0.txt">Boost License 1.0</a>.
@@ -480,12 +480,12 @@ unittest
 
 
 /**
- * $(D FileBuffer) is a wrapper for $(LINK2 http://www.digitalmars.com/d/2.0/phobos/std_stdio.html#File, File)
+ * $(D BinaryFileWriter) is a wrapper for $(LINK2 http://www.digitalmars.com/d/2.0/phobos/std_stdio.html#File, File)
  *
  * Phobos doesn't have integrated stream($(D std.stream) will be eliminated?).
  * I strongly want the stream implemented Range.
  */
-struct FileBuffer
+struct BinaryFileWriter
 {
   private:
     File         file_;     // stream to write
@@ -551,16 +551,16 @@ struct FileBuffer
 
 
 /**
- * Helper for $(D FileBuffer) construction.
+ * Helper for $(D BinaryFileWriter) construction.
  *
  * Params:
  *  file    = the pointer to $(D File).
  *  isCache = caching content if true.
  *
  * Returns:
- *  a $(D FileBuffer) object instantiated and initialized according to the arguments.
+ *  a $(D BinaryFileWriter) object instantiated and initialized according to the arguments.
  */
-FileBuffer fileBuffer(ref File file, bool isCache = false)
+BinaryFileWriter binaryFileWriter(ref File file, bool isCache = false)
 {
     return typeof(return)(file, isCache);
 }
@@ -573,7 +573,7 @@ unittest
 
     { // output to name file
         auto output = File(name, "wb");
-        auto buffer = fileBuffer(output, true);
+        auto buffer = binaryFileWriter(output, true);
 
         foreach (v; tests)
             buffer.put(v);
@@ -595,7 +595,7 @@ unittest
 
 
 /*
- * $(D SocketBuffer) is a wrapper for $(D Socket).
+ * $(D SocketWriter) is a wrapper for $(D Socket).
  *
  * Phobos's socket is broken!
  */
