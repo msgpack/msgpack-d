@@ -290,12 +290,12 @@ struct VRefBuffer
   private:
     immutable size_t RefSize, ChunkSize;
 
-    // for writeCopy
+    // for putCopy
     ubyte[][] chunk_;  // memory chunk for buffer
     size_t[]  uList_;  // used size list for chunk
     size_t    index_;  // index for cunrrent chunk
 
-    // for writeRef
+    // for putRef
     iovec[] vecList_;   // referece to large data or copied data.
 
 
@@ -356,7 +356,7 @@ struct VRefBuffer
     void put(in ubyte value)
     {
         ubyte[1] values = [value];
-        writeCopy(values);
+        putCopy(values);
     }
 
 
@@ -370,9 +370,9 @@ struct VRefBuffer
     void put(in ubyte[] values)
     {
         if (values.length < RefSize)
-            writeCopy(values);
+            putCopy(values);
         else
-            writeRef(values);
+            putRef(values);
     }
 
 
@@ -383,7 +383,7 @@ struct VRefBuffer
      * Params:
      *  values = the content to write.
      */
-    void writeRef(in ubyte[] values)
+    void putRef(in ubyte[] values)
     {
         vecList_.length += 1;
         vecList_[$ - 1]  = iovec(cast(void*)values.ptr, values.length);
@@ -396,7 +396,7 @@ struct VRefBuffer
      * Params:
      *  values = the contents to write.
      */
-    void writeCopy(in ubyte[] values)
+    void putCopy(in ubyte[] values)
     {
         /*
          * Helper for expanding new space.
@@ -425,10 +425,10 @@ struct VRefBuffer
 
         // Optimization for avoiding iovec allocation.
         if (vecList_.length && data.ptr == (vecList_[$ - 1].iov_base +
-                                           vecList_[$ - 1].iov_len))
+                                            vecList_[$ - 1].iov_len))
             vecList_[$ - 1].iov_len += size;
         else
-            writeRef(data);
+            putRef(data);
     }
 
 
@@ -465,7 +465,7 @@ unittest
         buffer.put(v);
     buffer.put(tests);
 
-    assert(buffer.data == tests, "writeCopy failed");
+    assert(buffer.data == tests, "putCopy failed");
 
     iovec[] vector = buffer.vector;
     ubyte[] result;
