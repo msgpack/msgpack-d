@@ -4,6 +4,16 @@ MessagePack is a binary-based JSON-like serialization library.
 
 MessagePack for D is a pure D implementation of MessagePack.
 
+# Features
+
+* Small and High peformance
+* Zero copy serialization / deserialization
+* Stream deserializer
+
+# Usage
+
+See example directory(simple.d, custom.d, stream.d).
+
 # Link
 
 * [The MessagePack Project](http://msgpack.sourceforge.net/)
@@ -12,7 +22,7 @@ MessagePack for D is a pure D implementation of MessagePack.
 
 * [MessagePack's Github](http://github.com/msgpack/)
 
-  Other language libraries are here
+  Other language versions are here
 
 # Copyright
 
