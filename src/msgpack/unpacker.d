@@ -48,6 +48,8 @@ while(unpacker.execute()) {
     foreach (obj; unpacker) {
         // do stuff
     }
+
+    unpacker.clear();
 }
 
 if (unpacker.size)
@@ -235,7 +237,7 @@ struct Unpacker
 
 
     /**
-     * Clears some states.
+     * Clears some states for next deserialization.
      */
     nothrow void clear()
     {
@@ -336,7 +338,7 @@ struct Unpacker
 
         do {
           Lstart:
-             if (state == State.HEADER) {
+            if (state == State.HEADER) {
                 const header = buffer_[cur];
 
                 if (0x00 <= header && header <= 0x7f) {         // positive
@@ -417,14 +419,12 @@ struct Unpacker
 
                 final switch (state) {
                 case State.FLOAT:
-                    union _f { uint i; float f; };
                     _f temp;
 
                     temp.i = load32To!uint(buffer_[base..base + trail]);
                     unpackFloat(obj, temp.f);
                     goto Lpush;
                 case State.DOUBLE:
-                    union _d { ulong i; double f; };
                     _d temp;
 
                     temp.i = load64To!long(buffer_[base..base + trail]);
@@ -562,7 +562,8 @@ struct Unpacker
     }
 
 
-    /// InputRange implementations.
+    // InputRange implementations.
+
 
     /**
      * Range primitive operation that checks iteration state.

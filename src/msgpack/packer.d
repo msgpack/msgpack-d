@@ -399,9 +399,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
     /// ditto
     ref Packer pack(T)(in T value) if (is(Unqual!T == float))
     {
-        union _ { float f; uint i; }
-
-        const temp = convertEndianTo!32(_(value).i);
+        const temp = convertEndianTo!32(_f(value).i);
 
         store_[0] = Format.FLOAT;
         *cast(uint*)&store_[Offset] = temp;
@@ -414,9 +412,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
     /// ditto
     ref Packer pack(T)(in T value) if (is(Unqual!T == double))
     {
-        union _ { double f; ulong i; }
-
-        const temp = convertEndianTo!64(_(value).i);
+        const temp = convertEndianTo!64(_d(value).i);
 
         store_[0] = Format.DOUBLE;
         *cast(ulong*)&store_[Offset] = temp;
@@ -754,8 +750,6 @@ unittest
     }
     { // fload, double
         static struct FTest { ubyte format; real value; }
-        static union _f { float  f; uint  i; }
-        static union _d { double f; ulong i; }
 
         static FTest[] tests = [
             {Format.FLOAT,  float.min},
@@ -891,4 +885,3 @@ unittest
     static assert(!isByte!(char));
     static assert(!isByte!(string));
 }
-import std.stdio;

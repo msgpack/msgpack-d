@@ -77,6 +77,26 @@ enum Format : ubyte
 
 
 /**
+ * For float type serialization / deserialization
+ */
+union _f
+{
+    float f;
+    uint  i;
+}
+
+
+/**
+ * For double type serialization / deserialization
+ */
+union _d
+{
+    double f;
+    ulong  i;
+}
+
+
+/**
  * For real type serialization / deserialization on 80bit environment.
  *
  * Other bit size exist?

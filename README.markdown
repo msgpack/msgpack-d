@@ -9,6 +9,9 @@ MessagePack for D is a pure D implementation of MessagePack.
 * Small and High peformance
 * Zero copy serialization / deserialization
 * Stream deserializer
+* Support D features(Range, Tuple, real type)
+  real type is D only. Don't use real type to communicate other language.
+  In addition, Unpacker raises exception if loss of precision occures.
 
 # Usage
 
