@@ -61,7 +61,7 @@ struct mp_Object
         bool          boolean;
         ulong         uinteger;
         long          integer;
-        double        floating;
+        real          floating;
         mp_Object[]   array;
         mp_KeyValue[] map;
         ubyte[]       raw;
@@ -110,7 +110,7 @@ struct mp_Object
 
 
     /// ditto
-    this(double value, mp_Type mp_type = mp_Type.FLOAT)
+    this(real value, mp_Type mp_type = mp_Type.FLOAT)
     {
         this(mp_type);
         via.floating = value;
@@ -411,9 +411,9 @@ unittest
     object = mp_Object(0.1e-10);
     other  = mp_Object(0.1e-20);
 
-    assert(object             != other);
-    assert(object.type        == mp_Type.FLOAT);
-    assert(object.as!(double) == 0.1e-10);
+    assert(object           != other);
+    assert(object.type      == mp_Type.FLOAT);
+    assert(object.as!(real) == 0.1e-10);
 
     // raw
     object = mp_Object(cast(ubyte[])[72, 105, 33]);

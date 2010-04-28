@@ -83,7 +83,10 @@ struct Unpacker
         ARRAY36,
         MAP16,
         MAP32,
-        RAW
+        RAW,
+
+        // D-specific type
+        REAL
     }
 
 
@@ -333,7 +336,7 @@ struct Unpacker
 
         do {
           Lstart:
-            if (state == State.HEADER) {
+             if (state == State.HEADER) {
                 const header = buffer_[cur];
 
                 if (0x00 <= header && header <= 0x7f) {         // positive
@@ -371,6 +374,14 @@ struct Unpacker
                     case Format.DOUBLE:
                         trail = 1 << (header & 0x03); // computes object size
                         state = cast(State)(header & 0x1f);
+                        break;
+                    case Format.REAL:
+                        static if (real.sizeof == double.sizeof) {
+                            throw new UnpackException("This environment can't use real.");
+                        } else {
+                            trail = real.sizeof;
+                            state = State.REAL;
+                        }
                         break;
                     case Format.ARRAY16:
                     case Format.ARRAY32:
@@ -410,14 +421,21 @@ struct Unpacker
                     _f temp;
 
                     temp.i = load32To!uint(buffer_[base..base + trail]);
-                    unpackDouble(obj, temp.f);
+                    unpackFloat(obj, temp.f);
                     goto Lpush;
                 case State.DOUBLE:
                     union _d { ulong i; double f; };
                     _d temp;
 
                     temp.i = load64To!long(buffer_[base..base + trail]);
-                    unpackDouble(obj, temp.f);
+                    unpackFloat(obj, temp.f);
+                    goto Lpush;
+                case State.REAL:
+                    _r temp; auto expb = base + temp.fraction.sizeof;
+
+                    temp.fraction = load64To!ulong (buffer_[base..expb]);
+                    temp.exponent = load16To!ushort(buffer_[expb..expb + temp.exponent.sizeof]);
+                    unpackFloat(obj, temp.f);
                     goto Lpush;
                 case State.UINT8:
                     unpackUInt(obj, buffer_[base]);
@@ -710,7 +728,7 @@ void unpackInt(ref mp_Object object, long value)
 
 
 /// ditto
-void unpackDouble(ref mp_Object object, double value)
+void unpackFloat(ref mp_Object object, real value)
 {
     object.type         = mp_Type.FLOAT;
     object.via.floating = value;
@@ -773,9 +791,9 @@ unittest
     assert(object.via.integer == int.min);
 
     // Floating point
-    unpackDouble(object, double.max);
+    unpackFloat(object, real.max);
     assert(object.type         == mp_Type.FLOAT);
-    assert(object.via.floating == double.max);
+    assert(object.via.floating == real.max);
 
     // Raw
     unpackRaw(object, cast(ubyte[])[1]);

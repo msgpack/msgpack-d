@@ -69,7 +69,27 @@ enum Format : ubyte
     // other
     NIL   = 0xc0,   // null
     TRUE  = 0xc3,
-    FALSE = 0xc2
+    FALSE = 0xc2,
+
+    // real (This format is D only!)
+    REAL = 0xd4
+}
+
+
+/**
+ * For real type serialization / deserialization on 80bit environment.
+ *
+ * Other bit size exist?
+ */
+union _r
+{
+    real f;
+
+    struct
+    {
+        ulong  fraction;
+        ushort exponent;  // includes sign
+    }
 }
 
 
@@ -184,7 +204,7 @@ else
      * Returns:
      *  the 8bit value corresponding $(D_PARAM bit) width.
      */
-    ubyte take8from(T, size_t bit = 8)(T value)
+    ubyte take8from(size_t bit = 8, T)(T value)
     {
         static if (bit == 8)
             return (cast(ubyte*)&value)[0];
