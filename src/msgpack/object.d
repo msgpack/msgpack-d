@@ -156,7 +156,7 @@ struct mp_Object
     @property T as(T)() if (is(T == bool))
     {
         if (type != mp_Type.BOOLEAN)
-            raise();
+            onCastError();
 
         return cast(bool)via.boolean;
     }
@@ -171,7 +171,7 @@ struct mp_Object
         if (type == mp_Type.NEGATIVE_INTEGER)
             return cast(T)via.integer;
 
-        raise();
+        onCastError();
 
         assert(false);
     }
@@ -181,7 +181,7 @@ struct mp_Object
     @property T as(T)() if (isFloatingPoint!(T))
     {
         if (type != mp_Type.FLOAT)
-            raise();
+            onCastError();
 
         return cast(T)via.floating;
     }
@@ -195,14 +195,14 @@ struct mp_Object
 
         static if (isSomeString!(T)) {
             if (type != mp_Type.RAW)
-                raise();
+                onCastError();
 
             return cast(T)via.raw;
         } else {
             alias typeof(T.init[0]) V;
 
             if (type != mp_Type.ARRAY)
-                raise();
+                onCastError();
 
             V[] array;
 
@@ -224,7 +224,7 @@ struct mp_Object
             return null;
 
         if (type != mp_Type.MAP)
-            raise();
+            onCastError();
 
         V[K] map;
 
@@ -412,13 +412,6 @@ struct mp_Object
 
         return via.raw == other;
     }
-
-
-  private:
-    void raise()
-    {
-        throw new InvalidTypeException("Attempt to cast with another type");
-    }
 }
 
 
@@ -441,6 +434,15 @@ struct mp_KeyValue
 }
 
 
+private:
+
+
+void onCastError()
+{
+    throw new InvalidTypeException("Attempt to cast with another type");
+}
+
+
 unittest
 {
     // nil
@@ -458,6 +460,11 @@ unittest
     assert(object.type      == mp_Type.BOOLEAN);
     assert(object.as!(bool) == true);
     assert(other            == false);
+
+    try {
+        auto b = object.as!(uint);
+        assert(false);
+    } catch (InvalidTypeException e) { }
 
     // unsigned integer
     object = mp_Object(10UL);
