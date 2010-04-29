@@ -422,8 +422,22 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
     }
 
 
-    /// ditto
-    ref Packer pack(T)(in T value) if (is(Unqual!T == real))
+    /**
+     * Serializes $(D_KEYWORD real) type and writes to buffer.
+     *
+     * This method is marked @system because $(D_KEYWORD real) type is D only!
+     * MessagePack doesn't define $(D_KEYWORD real) type format.
+     * Don't use this method if you communicate with other languages.
+     *
+     * Transfer pack!(double) if $(D_KEYWORD real) type on your environment equals $(D_KEYWORD double) type.
+     *
+     * Params:
+     *  value = the content to serialize.
+     *
+     * Returns:
+     *  this to method chain.
+     */
+    @system ref Packer pack(T)(in T value) if (is(Unqual!T == real))
     {
         static if (real.sizeof > double.sizeof) {
             static ubyte[Offset + real.sizeof] store = [Format.REAL];
