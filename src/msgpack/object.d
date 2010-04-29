@@ -329,7 +329,7 @@ struct mp_Object
     /**
      * Comparison for equality.
      */
-    bool opEquals(ref const mp_Object other) const
+    bool opEquals(Tdummy = void)(ref const mp_Object other) const
     {
         if (type != other.type)
             return false;
@@ -341,9 +341,76 @@ struct mp_Object
         case mp_Type.NEGATIVE_INTEGER: return via.integer  == other.via.integer;
         case mp_Type.FLOAT:            return via.floating == other.via.floating;
         case mp_Type.RAW:              return via.raw      == other.via.raw;
-        case mp_Type.ARRAY:            return via.array    == other.via.array; 
+        case mp_Type.ARRAY:            return via.array    == other.via.array;
         case mp_Type.MAP:              return via.map      == other.via.map;
         }
+    }
+
+
+    /// ditto
+    bool opEquals(T : bool)(in T other) const
+    {
+        if (type != mp_Type.BOOLEAN)
+            return false;
+
+        return via.boolean == other;
+    }
+
+
+    /// ditto
+    bool opEquals(T : ulong)(in T other) const
+    {
+        static if (__traits(isUnsigned, T)) {
+            if (type != mp_Type.POSITIVE_INTEGER)
+                return false;
+
+            return via.uinteger == other;
+        } else {
+            if (type != mp_Type.NEGATIVE_INTEGER)
+                return false;
+
+            return via.integer == other;
+        }
+    }
+
+
+    /// ditto
+    bool opEquals(T : real)(in T other) const
+    {
+        if (type != mp_Type.FLOAT)
+            return false;
+
+        return via.floating == other;
+    }
+
+
+    /// ditto
+    bool opEquals(T : mp_Object[])(in T other) const
+    {
+        if (type != mp_Type.ARRAY)
+            return false;
+
+        return via.array == other;
+    }
+
+
+    /// ditto
+    bool opEquals(T : mp_KeyValue[])(in T other) const
+    {
+        if (type != mp_Type.MAP)
+            return false;
+
+        return via.map == other;
+    }
+
+
+    /// ditto
+    bool opEquals(T : ubyte[])(in T other) const
+    {
+        if (type != mp_Type.RAW)
+            return false;
+
+        return via.raw == other;
     }
 
 
@@ -390,6 +457,7 @@ unittest
     assert(object           != other);
     assert(object.type      == mp_Type.BOOLEAN);
     assert(object.as!(bool) == true);
+    assert(other            == false);
 
     // unsigned integer
     object = mp_Object(10UL);
@@ -398,6 +466,7 @@ unittest
     assert(object           == other);
     assert(object.type      == mp_Type.POSITIVE_INTEGER);
     assert(object.as!(uint) == 10);
+    assert(other            == 10UL);
 
     // signed integer
     object = mp_Object(-20L);
@@ -406,14 +475,16 @@ unittest
     assert(object          != other);
     assert(object.type     == mp_Type.NEGATIVE_INTEGER);
     assert(object.as!(int) == -20);
+    assert(other           == -10L);
 
     // floating point
-    object = mp_Object(0.1e-10);
-    other  = mp_Object(0.1e-20);
+    object = mp_Object(0.1e-10L);
+    other  = mp_Object(0.1e-20L);
 
     assert(object           != other);
     assert(object.type      == mp_Type.FLOAT);
-    assert(object.as!(real) == 0.1e-10);
+    assert(object.as!(real) == 0.1e-10L);
+    assert(other            == 0.1e-20L);
 
     // raw
     object = mp_Object(cast(ubyte[])[72, 105, 33]);
@@ -422,14 +493,17 @@ unittest
     assert(object             == other);
     assert(object.type        == mp_Type.RAW);
     assert(object.as!(string) == "Hi!");
+    assert(other              == cast(ubyte[])[72, 105, 33]);
 
     // array
-    object = mp_Object([object]);
-    other  = mp_Object([other]);
+    auto t = mp_Object(cast(ubyte[])[72, 105, 33]);
+    object = mp_Object([t]);
+    other  = mp_Object([t]);
 
     assert(object               == other);
     assert(object.type          == mp_Type.ARRAY);
     assert(object.as!(string[]) == ["Hi!"]);
+    assert(other                == [t]);
 
     // map
     object = mp_Object([mp_KeyValue(mp_Object(1L), mp_Object(2L))]);
@@ -438,6 +512,7 @@ unittest
     assert(object               != other);
     assert(object.type          == mp_Type.MAP);
     assert(object.as!(int[int]) == [1:2]);
+    assert(other                == [mp_KeyValue(mp_Object(1L), mp_Object(1L))]);
 
     object = mp_Object(10UL);
 
