@@ -34,27 +34,84 @@ class UnpackException : Exception
 
 
 /**
+ * $(D Unpacked) is a $(D InputRange) wrapper for deserialization result.
+ */
+struct Unpacked
+{
+    mp_Object   object_;
+    mp_Object[] range_;
+
+    alias object_ this;
+
+
+    /**
+     * Constructs a $(D Unpacked) with argument.
+     *
+     * Params:
+     *  object = a deserialized object.
+     */
+    this(ref mp_Object object)
+    {
+        object_ = object;
+
+        if (object.type == mp_Type.ARRAY)
+            range_ = object.via.array;
+    }
+
+
+    /**
+     * Range primitive operation that checks iteration state.
+     *
+     * Returns:
+     *  true if there are no more elements to be iterated.
+     */
+    @property bool empty() const  // std.array.empty isn't nothrow function
+    {
+        return range_.empty;
+    }
+
+
+    /**
+     * Range primitive operation that returns the currently iterated element.
+     *
+     * Returns:
+     *  the deserialized $(D mp_Object).
+     */
+    @property mp_Object front()
+    {
+        return range_.front();
+    }
+
+
+    /**
+     * Range primitive operation that advances the range to its next element.
+     */
+    void popFront()
+    {
+        range_.popFront();
+    }
+}
+
+
+/**
  * $(D Unpacker) is a $(D MessagePack) stream deserializer
  *
- * $(D Unpacker) becomes a $(D InputRange) if deserialized Array object.
  * This implementation supports zero copy deserialization of Raw object.
  *
  * Example:
------
-...
-auto unpacker = unpacker(serializedData);
-
-while(unpacker.execute()) {
-    foreach (obj; unpacker) {
-        // do stuff
-    }
-
-    unpacker.clear();
-}
-
-if (unpacker.size)
-    throw new Exception("Message is too large");
------
+ * -----
+ * ...
+ * auto unpacker = unpacker(serializedData);
+ * 
+ * while(unpacker.execute()) {
+ *     foreach (obj; unpacker.purge()) {
+ *         // do stuff
+ *     }
+ * }
+ * 
+ * if (unpacker.size)
+ *     throw new Exception("Message is too large");
+ * -----
  */
 struct Unpacker
 {
@@ -124,14 +181,13 @@ struct Unpacker
     }
 
 
-    ubyte[]     buffer_;   // internal buffer
-    size_t      limit_;    // size limit of buffer
-    size_t      used_;     // index that buffer cosumed
-    size_t      offset_;   // index that buffer parsed
-    size_t      parsed_;   // total size of parsed message
-    bool        hasRaw_;   // indicates whether Raw object has been deserialized
-    Context     context_;  // stack environment for streaming deserialization
-    mp_Object[] range_;    // for Range operation
+    ubyte[] buffer_;   // internal buffer
+    size_t  limit_;    // size limit of buffer
+    size_t  used_;     // index that buffer cosumed
+    size_t  offset_;   // index that buffer parsed
+    size_t  parsed_;   // total size of parsed message
+    bool    hasRaw_;   // indicates whether Raw object has been deserialized
+    Context context_;  // stack environment for streaming deserialization
 
 
   public:
@@ -173,6 +229,59 @@ struct Unpacker
 
 
     /**
+     * Forwards to deserialized object.
+     *
+     * Returns:
+     *  the $(D Unpacked) object contains deserialized object.
+     */
+    @property Unpacked unpacked()
+    {
+        return Unpacked(context_.stack[0].object);
+    }
+
+
+    /**
+     * Clears some states for next deserialization.
+     */
+    nothrow void clear()
+    {
+        initializeContext();
+
+        parsed_ = 0;
+    }
+
+
+    /**
+     * Convenient method for unpacking and clearing states.
+     *
+     * Example:
+     * -----
+     * foreach (obj; unpacker.purge()) {
+     *     // do stuff
+     * }
+     * -----
+     * is equivalent to
+     * -----
+     * foreach (obj; unpacker.unpacked) {
+     *     // do stuff
+     * }
+     * unpacker.clear();
+     * -----
+     *
+     * Returns:
+     *  the $(D Unpacked) object contains deserialized object.
+     */
+    Unpacked purge()
+    {
+        auto result = unpacked();
+
+        clear();
+
+        return result;
+    }
+
+
+    /**
      * Appends $(D_PARAM target) to internal buffer.
      *
      * Params:
@@ -198,7 +307,7 @@ struct Unpacker
 
     /**
      * Consumes buffer. This method is helper for buffer property.
-     * You must use this method if you write bytes to buffer directly, 
+     * You must use this method if you write bytes to buffer directly.
      *
      * Params:
      *  size = the number of consume.
@@ -237,17 +346,6 @@ struct Unpacker
 
 
     /**
-     * Clears some states for next deserialization.
-     */
-    nothrow void clear()
-    {
-        initializeContext();
-
-        parsed_ = 0;
-    }
-
-
-    /**
      * Returns:
      *  the total size including unparsed buffer size.
      */
@@ -278,18 +376,6 @@ struct Unpacker
 
 
     /**
-     * Forwards to deserialized object.
-     *
-     * Returns:
-     *  the deserialized object if deserialization completed.
-     */
-    @property nothrow mp_Object data()
-    {
-        return context_.stack[0].object;
-    }
-
-
-    /**
      * Executes deserialization.
      *
      * Returns:
@@ -301,7 +387,7 @@ struct Unpacker
     bool execute()
     {
         /*
-         * Current implementation is very durty(goto! goto!! goto!!!).
+         * Current implementation is very dirty(goto! goto!! goto!!!).
          * This Complexity for performance(avoid function call).
          */
 
@@ -541,8 +627,6 @@ struct Unpacker
         goto Labort;
 
       Lfinish:
-        if (obj.type == mp_Type.ARRAY)
-            range_= obj.via.array;
         (*stack)[0].object = obj;
         ret = true;
         cur++;
@@ -559,42 +643,6 @@ struct Unpacker
         offset_        = cur;
 
         return ret;
-    }
-
-
-    // InputRange implementations.
-
-
-    /**
-     * Range primitive operation that checks iteration state.
-     *
-     * Returns:
-     *  true if there are no more elements to be iterated.
-     */
-    @property bool empty() const  // std.array.empty isn't nothrow function
-    {
-        return range_.empty;
-    }
-
-
-    /**
-     * Range primitive operation that returns the currently iterated element.
-     *
-     * Returns:
-     *  the deserialized $(D mp_Object).
-     */
-    @property mp_Object front()
-    {
-        return range_.front();
-    }
-
-
-    /**
-     * Range primitive operation that advances the range to its next element.
-     */
-    void popFront()
-    {
-        range_.popFront();
     }
 
 
@@ -685,11 +733,11 @@ unittest
     foreach (unused; 0..2) {
         uint i;
 
-        foreach (obj; unpacker) i++;
+        foreach (obj; unpacker.unpacked) i++;
         assert(i == Size);
     }
 
-    auto result = unpacker.data.via.array;
+    auto result = unpacker.unpacked.via.array;
 
     assert(result[0].type          == mp_Type.NIL);
     assert(result[1].via.boolean   == true);

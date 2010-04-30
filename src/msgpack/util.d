@@ -109,7 +109,7 @@ unittest
 
         auto unpacker = unpacker(packer.buffer.data); unpacker.execute();
 
-        S result; result.mp_unpack(unpacker.data);
+        S result; result.mp_unpack(unpacker.unpacked);
 
         assert(result.num == 10);
         assert(result.str == "Hi!");
@@ -131,7 +131,7 @@ unittest
 
         auto unpacker = unpacker(packer.buffer.data); unpacker.execute();
 
-        C result = new C; result.mp_unpack(unpacker.data);
+        C result = new C; result.mp_unpack(unpacker.unpacked);
 
         assert(result.num == 10);
     }

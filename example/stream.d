@@ -27,9 +27,9 @@ void deserializer(Tid tid)
             break;
 
         while (unpacker.execute()) {
-            writeln("Type:  ", unpacker.data.type);
-            writeln("Value: ", unpacker.data.as!(string));
-            unpacker.clear();
+            auto unpacked = unpacker.purge();
+            writeln("Type:  ", unpacked.type);
+            writeln("Value: ", unpacked.as!(string));
         }
 
         if (unpacker.size >= 100)

@@ -72,19 +72,19 @@ unittest
  *  buffer = the buffer to deserialize.
  *
  * Returns:
- *  a deserialized object.
+ *  a $(D Unpacked) contains deserialized object.
  *
  * Throws:
  *  UnpackException if deserialization doesn't succeed.
  */
-mp_Object unpack(in ubyte[] buffer)
+Unpacked unpack(in ubyte[] buffer)
 {
     auto unpacker = unpacker(buffer);
 
     if (!unpacker.execute())
         throw new UnpackException("Deserialization failure");
 
-    return unpacker.data;
+    return unpacker.unpacked;
 }
 
 

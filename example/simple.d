@@ -21,7 +21,7 @@ void main()
     auto unpacker = unpacker(packer.buffer.data);
 
     if (unpacker.execute()) {
-        foreach (obj; unpacker)
+        foreach (obj; unpacker.purge())
             writeln(obj.type);
     } else {
         writeln("Serialized object is too large!");
