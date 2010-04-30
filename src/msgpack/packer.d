@@ -436,10 +436,13 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
      *
      * Returns:
      *  this to method chain.
+     *
+     * NOTE:
+     *  Currently, 80bit only.
      */
     @system ref Packer pack(T)(in T value) if (is(Unqual!T == real))
     {
-        static if (real.sizeof > double.sizeof) {
+        static if (real.sizeof > double.sizeof && real.sizeof == 10) {
             static ubyte[Offset + real.sizeof] store = [Format.REAL];
 
             const temp     = _r(value);
