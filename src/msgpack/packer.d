@@ -436,21 +436,18 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
      *
      * Returns:
      *  this to method chain.
-     *
-     * NOTE:
-     *  Currently, 80bit only.
      */
     @system ref Packer pack(T)(in T value) if (is(Unqual!T == real))
     {
-        static if (real.sizeof > double.sizeof && real.sizeof == 10) {
-            static ubyte[Offset + real.sizeof] store = [Format.REAL];
+        static if (real.sizeof > double.sizeof) {
+            static ubyte[Offset + 1 + real.sizeof] store = [Format.REAL, real.sizeof];
 
             const temp     = _r(value);
             const fraction = convertEndianTo!64(temp.fraction);
-            const exponent = convertEndianTo!16(temp.exponent);
+            const exponent = convertEndianTo!ES(temp.exponent);
 
-            *cast(Unqual!(typeof(fraction))*)&store[Offset]                   = fraction;
-            *cast(Unqual!(typeof(exponent))*)&store[Offset + fraction.sizeof] = exponent;
+            *cast(Unqual!(typeof(fraction))*)&store[Offset + 1]                   = fraction;
+            *cast(Unqual!(typeof(exponent))*)&store[Offset + 1 + fraction.sizeof] = exponent;
             buffer_.put(store[0..$]);
         } else {  // Non-x86 CPUs, real type equals double type.
             pack(cast(double)value);
@@ -766,6 +763,11 @@ unittest
         }
     }
     { // fload, double
+        static if (real.sizeof == double.sizeof)
+            alias TypeTuple!(float, double, double) FloatingTypes;
+        else
+            alias TypeTuple!(float, double, real) FloatingTypes;
+
         static struct FTest { ubyte format; real value; }
 
         static FTest[] tests = [
@@ -774,7 +776,7 @@ unittest
             {Format.REAL,   real.max},
         ];
 
-        foreach (I, T; TypeTuple!(float, double, real)) {
+        foreach (I, T; FloatingTypes) {
             mixin DefinePacker;
 
             packer.pack(cast(T)tests[I].value);
@@ -792,9 +794,10 @@ unittest
             default:
                 const t = _r(cast(T)tests[I].value);
                 const f = convertEndianTo!64(t.fraction);
-                const e = convertEndianTo!16(t.exponent);
-                assert(memcmp(&buffer.data[1],            &f, f.sizeof) == 0);
-                assert(memcmp(&buffer.data[1 + f.sizeof], &e, e.sizeof) == 0);
+                const e = convertEndianTo!ES(t.exponent);
+                assert(buffer.data[1] == real.sizeof);
+                assert(memcmp(&buffer.data[2],            &f, f.sizeof) == 0);
+                assert(memcmp(&buffer.data[2 + f.sizeof], &e, e.sizeof) == 0);
             }
         }
     }

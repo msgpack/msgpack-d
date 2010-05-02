@@ -464,11 +464,12 @@ struct Unpacker
                         state = cast(State)(header & 0x1f);
                         break;
                     case Format.REAL:
-                        static if (real.sizeof == double.sizeof) {
-                            throw new UnpackException("This environment can't use real.");
-                        } else {
+                        const realSize = buffer_[++cur];
+                        if (realSize == real.sizeof) {
                             trail = real.sizeof;
                             state = State.REAL;
+                        } else {
+                            throw new UnpackException("Real type on this environment is different from serialized real type.");
                         }
                         break;
                     case Format.ARRAY16:
@@ -513,14 +514,23 @@ struct Unpacker
                 case State.DOUBLE:
                     _d temp;
 
-                    temp.i = load64To!long(buffer_[base..base + trail]);
+                    temp.i = load64To!ulong(buffer_[base..base + trail]);
                     unpackFloat(obj, temp.f);
                     goto Lpush;
                 case State.REAL:
-                    _r temp; auto expb = base + temp.fraction.sizeof;
+                    _r temp; const expb = base + temp.fraction.sizeof;
 
-                    temp.fraction = load64To!ulong (buffer_[base..expb]);
-                    temp.exponent = load16To!ushort(buffer_[expb..expb + temp.exponent.sizeof]);
+                    temp.fraction = load64To!(typeof(temp.fraction))(buffer_[base..expb]);
+                    mixin("temp.exponent = load" ~ ES.stringof[0..2] ~ // delete u suffix
+                          "To!(typeof(temp.exponent))(buffer_[expb..expb + temp.exponent.sizeof]);");
+                    /*
+                    static if (ES == 16)
+                        temp.exponent = load16To!(typeof(temp.exponent))(buffer_[expb..expb + temp.exponent.sizeof]);
+                    else static if (ES == 32)
+                        temp.exponent = load32To!(typeof(temp.exponent))(buffer_[expb..expb + temp.exponent.sizeof]);
+                    else
+                        temp.exponent = load64To!(typeof(temp.exponent))(buffer_[expb..expb + temp.exponent.sizeof]);
+                    */
                     unpackFloat(obj, temp.f);
                     goto Lpush;
                 case State.UINT8:
@@ -552,14 +562,14 @@ struct Unpacker
                     unpackRaw(obj, buffer_[base..base + trail]);
                     goto Lpush;
                 case State.RAW16:
-                    trail = load16To!uint(buffer_[base..base + trail]);
+                    trail = load16To!size_t(buffer_[base..base + trail]);
                     if (trail == 0)
                         goto Lraw;
                     state = State.RAW;
                     cur++;
                     goto Lstart;
                 case State.RAW32:
-                    trail = load32To!uint(buffer_[base..base + trail]);
+                    trail = load32To!size_t(buffer_[base..base + trail]);
                     if (trail == 0)
                         goto Lraw;
                     state = State.RAW;
@@ -655,6 +665,7 @@ struct Unpacker
         context_.state        = State.HEADER;
         context_.trail        = 0;
         context_.top          = 0;
+        context_.stack.length = 0;  // array reset for previous deserialization
         context_.stack.length = 1;
     }
 
@@ -718,26 +729,28 @@ Unpacker unpacker(in ubyte[] target, size_t bufferSize = 8192)
 
 unittest
 {
+    // serialize
     SimpleBuffer buffer;
     auto packer = packer(&buffer);
-    enum Size   = mp_Type.max;
+    enum Size   = mp_Type.max + 1;
 
     packer.packArray(Size);
-    packer.packNil().packTrue().pack(1).pack(-2).pack("Hi!").pack([1]).pack([1:1]);
+    packer.packNil().packTrue().pack(1).pack(-2).pack("Hi!");
+    packer.pack([1]).pack([1:1]).pack(real.max);
 
-    auto unpacker = unpacker(packer.buffer.data);
-
-    unpacker.execute();
+    // deserialize
+    auto unpacker = unpacker(packer.buffer.data); unpacker.execute();
+    auto unpacked = unpacker.purge();
 
     // Range test
     foreach (unused; 0..2) {
         uint i;
 
-        foreach (obj; unpacker.unpacked) i++;
+        foreach (obj; unpacked) i++;
         assert(i == Size);
     }
 
-    auto result = unpacker.unpacked.via.array;
+    auto result = unpacked.via.array;
 
     assert(result[0].type          == mp_Type.NIL);
     assert(result[1].via.boolean   == true);
@@ -746,8 +759,7 @@ unittest
     assert(result[4].via.raw       == [72, 105, 33]);
     assert(result[5].as!(int[])    == [1]);
     assert(result[6].as!(int[int]) == [1:1]);
-
-    unpacker.clear();
+    assert(result[7].as!(real)     == real.max);
 }
 
 

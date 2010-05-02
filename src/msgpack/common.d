@@ -96,20 +96,54 @@ union _d
 }
 
 
-/**
- * For real type serialization / deserialization on 80bit environment.
- *
- * Other bit size exist?
- */
-union _r
-{
-    real f;
-
-    struct
+static if (real.sizeof == 16) {
+    /**
+     * For real type serialization / deserialization on 128bit environment
+     */
+    union _r
     {
-        ulong  fraction;
-        ushort exponent;  // includes sign
+        real f;
+
+        struct
+        {
+            ulong fraction;
+            ulong exponent;  // includes sign
+        }
     }
+
+    enum ES = ulong.sizeof * 8;  // exponent size as bits
+} else static if (real.sizeof == 12) {
+    /**
+     * For real type serialization / deserialization on 96bit environment
+     */
+    union _r
+    {
+        real f;
+
+        struct
+        {
+            ulong fraction;
+            uint  exponent;  // includes sign
+        }
+    }
+
+    enum ES = uint.sizeof * 8;  // exponent size as bits
+} else {
+    /**
+     * For real type serialization / deserialization on 80bit environment
+     */
+    union _r
+    {
+        real f;
+
+        struct
+        {
+            ulong  fraction;
+            ushort exponent;  // includes sign
+        }
+    }
+
+    enum ES = ushort.sizeof * 8;  // exponent size as bits
 }
 
 
