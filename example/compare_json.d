@@ -13,14 +13,14 @@ import msgpack.msgpack;
 
 void main()
 {
-    JSONValue jsonObj = parseJSON(`[12, "foo", true, 0.23]`);
+    JSONValue jsonObj = parseJSON(`[12, "foo", true, 0.23, {"1":1}, [1, 2]]`);
 
     void f1()
     {
         parseJSON(toJSON(&jsonObj));
     }
 
-    mp_Object mpObj = mp_Object([mp_Object(12UL), mp_Object(cast(ubyte[])"foo"), mp_Object(true), mp_Object(0.23)]);
+    mp_Object mpObj = unpack(pack(12, "foo", true, 0.23, ["1":1], [1, 2]));
 
     void f2()
     {

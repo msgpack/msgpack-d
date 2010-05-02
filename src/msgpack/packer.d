@@ -550,7 +550,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
     ref Packer packArray(in size_t length)
     {
         if (length < 16) {
-            ubyte temp = Format.ARRAY | cast(ubyte)length;
+            const ubyte temp = Format.ARRAY | cast(ubyte)length;
             buffer_.put(take8from(temp));
         } else if (length < 65536) {
             const temp = convertEndianTo!16(length);
@@ -574,7 +574,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
     ref Packer packMap(in size_t length)
     {
         if (length < 16) {
-            ubyte temp = Format.MAP | cast(ubyte)length;
+            const ubyte temp = Format.MAP | cast(ubyte)length;
             buffer_.put(take8from(temp));
         } else if (length < 65536) {
             const temp = convertEndianTo!16(length);
@@ -598,7 +598,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
     ref Packer packRaw(in size_t length)
     {
         if (length < 32) {
-            ubyte temp = Format.RAW | cast(ubyte)length;
+            const ubyte temp = Format.RAW | cast(ubyte)length;
             buffer_.put(take8from(temp));
         } else if (length < 65536) {
             const temp = convertEndianTo!16(length);

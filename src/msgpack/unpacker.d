@@ -519,14 +519,6 @@ struct Unpacker
                     temp.fraction = load64To!(typeof(temp.fraction))(buffer_[base..expb]);
                     mixin("temp.exponent = load" ~ ES.stringof[0..2] ~ // delete u suffix
                           "To!(typeof(temp.exponent))(buffer_[expb..expb + temp.exponent.sizeof]);");
-                    /*
-                    static if (ES == 16)
-                        temp.exponent = load16To!(typeof(temp.exponent))(buffer_[expb..expb + temp.exponent.sizeof]);
-                    else static if (ES == 32)
-                        temp.exponent = load32To!(typeof(temp.exponent))(buffer_[expb..expb + temp.exponent.sizeof]);
-                    else
-                        temp.exponent = load64To!(typeof(temp.exponent))(buffer_[expb..expb + temp.exponent.sizeof]);
-                    */
                     unpackFloat(obj, temp.f);
                     goto Lpush;
                 case State.UINT8:
