@@ -25,7 +25,7 @@ version(unittest) import msgpack.packer, msgpack.buffer;
  * $(D UnpackException) is thrown on parse error
  */
 class UnpackException : Exception
-{ 
+{
     this(string message)
     { 
         super(message);
@@ -38,10 +38,9 @@ class UnpackException : Exception
  */
 struct Unpacked
 {
-    mp_Object   object_;
-    mp_Object[] range_;
+    mp_Object object;
 
-    alias object_ this;
+    alias object this;
 
 
     /**
@@ -52,10 +51,7 @@ struct Unpacked
      */
     this(ref mp_Object object)
     {
-        object_ = object;
-
-        if (object.type == mp_Type.ARRAY)
-            range_ = object.via.array;
+        this.object = object;
     }
 
 
@@ -65,9 +61,9 @@ struct Unpacked
      * Returns:
      *  true if there are no more elements to be iterated.
      */
-    @property bool empty() const  // std.array.empty isn't nothrow function
+    @property nothrow bool empty() const  // std.array.empty isn't nothrow function
     {
-        return range_.empty;
+        return (object.type == mp_Type.ARRAY) && !object.via.array.length;
     }
 
 
@@ -77,9 +73,9 @@ struct Unpacked
      * Returns:
      *  the deserialized $(D mp_Object).
      */
-    @property mp_Object front()
+    @property ref mp_Object front()
     {
-        return range_.front();
+        return object.via.array.front;
     }
 
 
@@ -88,7 +84,7 @@ struct Unpacked
      */
     void popFront()
     {
-        range_.popFront();
+        object.via.array.popFront();
     }
 }
 
@@ -665,7 +661,6 @@ struct Unpacker
         context_.state        = State.HEADER;
         context_.trail        = 0;
         context_.top          = 0;
-        context_.stack.length = 0;  // array reset for previous deserialization
         context_.stack.length = 1;
     }
 
@@ -760,7 +755,11 @@ unittest
     assert(result[5].as!(int[])    == [1]);
     assert(result[6].as!(int[int]) == [1:1]);
     assert(result[7].as!(real)     == real.max);
+
+    void f1() { foreach (unused; unpacked) {} }
+    writeln(benchmark!(f1)(1000_000));
 }
+import std.stdio, std.date;
 
 
 private:
