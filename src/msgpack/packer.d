@@ -47,8 +47,8 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
 
     enum size_t Offset = 1;  // type-information offset
 
-    Buffer   buffer_;  // the buffer to write
-    ubyte[9] store_;   // stores serialized value
+    Buffer                          buffer_;  // the buffer to write
+    ubyte[Offset + 1 + real.sizeof] store_;   // stores serialized value
 
 
   public:
@@ -440,15 +440,14 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
     @system ref Packer pack(T)(in T value) if (is(Unqual!T == real))
     {
         static if (real.sizeof > double.sizeof) {
-            static ubyte[Offset + 1 + real.sizeof] store = [Format.REAL, real.sizeof];
-
+            store_[0..2]   = [Format.REAL, real.sizeof];
             const temp     = _r(value);
             const fraction = convertEndianTo!64(temp.fraction);
             const exponent = convertEndianTo!ES(temp.exponent);
 
-            *cast(Unqual!(typeof(fraction))*)&store[Offset + 1]                   = fraction;
-            *cast(Unqual!(typeof(exponent))*)&store[Offset + 1 + fraction.sizeof] = exponent;
-            buffer_.put(store[0..$]);
+            *cast(Unqual!(typeof(fraction))*)&store_[Offset + 1]                   = fraction;
+            *cast(Unqual!(typeof(exponent))*)&store_[Offset + 1 + fraction.sizeof] = exponent;
+            buffer_.put(store_[0..$]);
         } else {  // Non-x86 CPUs, real type equals double type.
             pack(cast(double)value);
         }
