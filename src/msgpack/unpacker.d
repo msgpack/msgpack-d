@@ -755,11 +755,7 @@ unittest
     assert(result[5].as!(int[])    == [1]);
     assert(result[6].as!(int[int]) == [1:1]);
     assert(result[7].as!(real)     == real.max);
-
-    void f1() { foreach (unused; unpacked) {} }
-    writeln(benchmark!(f1)(1000_000));
 }
-import std.stdio, std.date;
 
 
 private:
