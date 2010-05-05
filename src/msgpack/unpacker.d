@@ -269,7 +269,7 @@ struct Unpacker
      */
     Unpacked purge()
     {
-        auto result = unpacked();
+        auto result = Unpacked(context_.stack[0].object);
 
         clear();
 
@@ -641,6 +641,30 @@ struct Unpacker
         offset_        = cur;
 
         return ret;
+    }
+
+
+    /**
+     * supports foreach. One loop provides $(D Unpacked) object contains execute() result.
+     * This is convenient in case that $(D MessagePack) objects are continuous.
+     *
+     * NOTE:
+     *  Why opApply? Currently, D's Range is state-less.
+     *  I will change to Range if Phobos supports stream.
+     */
+    int opApply(int delegate(ref Unpacked) dg)
+    {
+        int result;
+
+        while (execute()) {
+            result = dg(Unpacked(context_.stack[0].object));
+            if (result)
+                break;
+
+            clear();
+        }
+
+        return result;
     }
 
 
