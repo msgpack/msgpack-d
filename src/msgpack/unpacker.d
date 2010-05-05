@@ -402,7 +402,7 @@ struct Unpacker
          */
         bool startContainer(string Type)(ElementType type, size_t length)
         {
-            mixin("unpack" ~ Type ~ "((*stack)[top].object, length);");
+            mixin("callback" ~ Type ~ "((*stack)[top].object, length);");
 
             if (length == 0)
                 return false;
@@ -424,10 +424,10 @@ struct Unpacker
                 const header = buffer_[cur];
 
                 if (0x00 <= header && header <= 0x7f) {         // positive
-                    unpackUInt(obj, header);
+                    callbackUInt(obj, header);
                     goto Lpush;
                 } else if (0xe0 <= header && header <= 0xff) {  // negative
-                    unpackInt(obj, cast(byte)header);
+                    callbackInt(obj, cast(byte)header);
                     goto Lpush;
                 } else if (0xa0 <= header && header <= 0xbf) {  // fix raw
                     trail = header & 0x1f;
@@ -478,13 +478,13 @@ struct Unpacker
                         state = cast(State)(header & 0x1f);
                         break;
                     case Format.NIL:
-                        unpackNil(obj);
+                        callbackNil(obj);
                         goto Lpush;
                     case Format.TRUE:
-                        unpackBool(obj, true);
+                        callbackBool(obj, true);
                         goto Lpush;
                     case Format.FALSE:
-                        unpackBool(obj, false);
+                        callbackBool(obj, false);
                         goto Lpush;
                     default:
                         throw new UnpackException("Unknown format");
@@ -505,13 +505,13 @@ struct Unpacker
                     _f temp;
 
                     temp.i = load32To!uint(buffer_[base..base + trail]);
-                    unpackFloat(obj, temp.f);
+                    callbackFloat(obj, temp.f);
                     goto Lpush;
                 case State.DOUBLE:
                     _d temp;
 
                     temp.i = load64To!ulong(buffer_[base..base + trail]);
-                    unpackFloat(obj, temp.f);
+                    callbackFloat(obj, temp.f);
                     goto Lpush;
                 case State.REAL:
                     _r temp; const expb = base + temp.fraction.sizeof;
@@ -519,35 +519,35 @@ struct Unpacker
                     temp.fraction = load64To!(typeof(temp.fraction))(buffer_[base..expb]);
                     mixin("temp.exponent = load" ~ ES.stringof[0..2] ~ // delete u suffix
                           "To!(typeof(temp.exponent))(buffer_[expb..expb + temp.exponent.sizeof]);");
-                    unpackFloat(obj, temp.f);
+                    callbackFloat(obj, temp.f);
                     goto Lpush;
                 case State.UINT8:
-                    unpackUInt(obj, buffer_[base]);
+                    callbackUInt(obj, buffer_[base]);
                     goto Lpush;
                 case State.UINT16:
-                    unpackUInt(obj, load16To!ulong(buffer_[base..base + trail]));
+                    callbackUInt(obj, load16To!ulong(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.UINT32:
-                    unpackUInt(obj, load32To!ulong(buffer_[base..base + trail]));
+                    callbackUInt(obj, load32To!ulong(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.UINT64:
-                    unpackUInt(obj, load64To!ulong(buffer_[base..base + trail]));
+                    callbackUInt(obj, load64To!ulong(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.INT8:
-                    unpackInt(obj, cast(byte)buffer_[base]);
+                    callbackInt(obj, cast(byte)buffer_[base]);
                     goto Lpush;
                 case State.INT16:
-                    unpackInt(obj, load16To!long(buffer_[base..base + trail]));
+                    callbackInt(obj, load16To!long(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.INT32:
-                    unpackInt(obj, load32To!long(buffer_[base..base + trail]));
+                    callbackInt(obj, load32To!long(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.INT64:
-                    unpackInt(obj, load64To!long(buffer_[base..base + trail]));
+                    callbackInt(obj, load64To!long(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.RAW: Lraw:
                     hasRaw_ = true;
-                    unpackRaw(obj, buffer_[base..base + trail]);
+                    callbackRaw(obj, buffer_[base..base + trail]);
                     goto Lpush;
                 case State.RAW16:
                     trail = load16To!size_t(buffer_[base..base + trail]);
@@ -652,7 +652,7 @@ struct Unpacker
      *  Why opApply? Currently, D's Range is state-less.
      *  I will change to Range if Phobos supports stream.
      */
-    int opApply(int delegate(ref Unpacked) dg)
+    int opApply(scope int delegate(ref Unpacked) dg)
     {
         int result;
 
@@ -784,7 +784,7 @@ private:
  *  object = the object to set
  *  value  = the content to set
  */
-void unpackUInt(ref mp_Object object, ulong value)
+void callbackUInt(ref mp_Object object, ulong value)
 {
     object.type         = mp_Type.POSITIVE_INTEGER;
     object.via.uinteger = value;
@@ -792,7 +792,7 @@ void unpackUInt(ref mp_Object object, ulong value)
 
 
 /// ditto
-void unpackInt(ref mp_Object object, long value)
+void callbackInt(ref mp_Object object, long value)
 {
     object.type        = mp_Type.NEGATIVE_INTEGER;
     object.via.integer = value;
@@ -800,7 +800,7 @@ void unpackInt(ref mp_Object object, long value)
 
 
 /// ditto
-void unpackFloat(ref mp_Object object, real value)
+void callbackFloat(ref mp_Object object, real value)
 {
     object.type         = mp_Type.FLOAT;
     object.via.floating = value;
@@ -808,7 +808,7 @@ void unpackFloat(ref mp_Object object, real value)
 
 
 /// ditto
-void unpackRaw(ref mp_Object object, ubyte[] raw)
+void callbackRaw(ref mp_Object object, ubyte[] raw)
 {
     object.type    = mp_Type.RAW;
     object.via.raw = raw;
@@ -816,7 +816,7 @@ void unpackRaw(ref mp_Object object, ubyte[] raw)
 
 
 /// ditto
-void unpackArray(ref mp_Object object, size_t length)
+void callbackArray(ref mp_Object object, size_t length)
 {
     object.type = mp_Type.ARRAY;
     object.via.array.length = 0;
@@ -825,7 +825,7 @@ void unpackArray(ref mp_Object object, size_t length)
 
 
 /// ditto
-void unpackMap(ref mp_Object object, size_t length)
+void callbackMap(ref mp_Object object, size_t length)
 {
     object.type = mp_Type.MAP;
     object.via.map.length = 0;
@@ -834,14 +834,14 @@ void unpackMap(ref mp_Object object, size_t length)
 
 
 /// ditto
-void unpackNil(ref mp_Object object)
+void callbackNil(ref mp_Object object)
 {
     object.type = mp_Type.NIL;
 }
 
 
 /// ditto
-void unpackBool(ref mp_Object object, bool value)
+void callbackBool(ref mp_Object object, bool value)
 {
     object.type        = mp_Type.BOOLEAN;
     object.via.boolean = value;
@@ -853,45 +853,45 @@ unittest
     mp_Object object;
 
     // Unsigned integer
-    unpackUInt(object, uint.max);
+    callbackUInt(object, uint.max);
     assert(object.type         == mp_Type.POSITIVE_INTEGER);
     assert(object.via.uinteger == uint.max);
 
     // Signed integer
-    unpackInt(object, int.min);
+    callbackInt(object, int.min);
     assert(object.type        == mp_Type.NEGATIVE_INTEGER);
     assert(object.via.integer == int.min);
 
     // Floating point
-    unpackFloat(object, real.max);
+    callbackFloat(object, real.max);
     assert(object.type         == mp_Type.FLOAT);
     assert(object.via.floating == real.max);
 
     // Raw
-    unpackRaw(object, cast(ubyte[])[1]);
+    callbackRaw(object, cast(ubyte[])[1]);
     assert(object.type    == mp_Type.RAW);
     assert(object.via.raw == cast(ubyte[])[1]);
 
     // Array
     mp_Object[] array; array.reserve(16);
 
-    unpackArray(object, 16);
+    callbackArray(object, 16);
     assert(object.type               == mp_Type.ARRAY);
     assert(object.via.array.capacity == array.capacity);
 
     // Map
     mp_KeyValue[] map; map.reserve(16);
 
-    unpackMap(object, 16);
+    callbackMap(object, 16);
     assert(object.type             == mp_Type.MAP);
     assert(object.via.map.capacity == map.capacity);
 
     // NIL
-    unpackNil(object);
+    callbackNil(object);
     assert(object.type == mp_Type.NIL);
 
     // Bool
-    unpackBool(object, true);
+    callbackBool(object, true);
     assert(object.type        == mp_Type.BOOLEAN);
     assert(object.via.boolean == true);
 }
