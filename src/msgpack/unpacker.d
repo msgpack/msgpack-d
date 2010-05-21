@@ -89,6 +89,181 @@ struct Unpacked
 }
 
 
+/*
+ * Internal buffer and operations for Unpacker.
+ *
+ * buffer image:
+ * +-------------------------------------------+
+ * | [object] | [obj | unparsed... | unused... |
+ * +-------------------------------------------+
+ *            ^ offset
+ *                   ^ current
+ *                                 ^ used
+ *                                             ^ buffer.length
+ */
+mixin template InternalBuffer()
+{
+  private:
+    ubyte[] buffer_;  // internal buffer
+    size_t  limit_;   // size limit of buffer
+    size_t  used_;    // index that buffer cosumed
+    size_t  offset_;  // index that buffer parsed
+    size_t  parsed_;  // total size of parsed message
+    bool    hasRaw_;  // indicates whether Raw object has been deserialized
+
+
+  public:
+    /**
+     * Forwards to internal buffer.
+     *
+     * Returns:
+     *  the reference of internal buffer.
+     */
+    @property nothrow ubyte[] buffer()
+    {
+        return buffer_;
+    }
+
+
+    /**
+     * Fills internal buffer with $(D_PARAM target).
+     *
+     * Params:
+     *  target = new serialized buffer to deserialize.
+     */
+    void feed(in ubyte[] target)
+    in
+    {
+        assert(target.length);
+    }
+    body
+    {
+        const size = target.length;
+
+        // lacks current buffer?
+        if (limit_ - used_ < size)
+            expandBuffer(size);
+
+        buffer_[used_..used_ + size] = target;
+        used_ += size;
+    }
+
+
+    /**
+     * Consumes buffer. This method is helper for buffer property.
+     * You must use this method if you write bytes to buffer directly.
+     *
+     * Params:
+     *  size = the number of consuming.
+     */
+    nothrow void bufferConsumed(in size_t size)
+    {
+        if (used_ + size > limit_)
+            used_ = limit_;
+        else
+            used_ += size;
+    }
+
+
+    /**
+     * Removes unparsed buffer.
+     */
+    nothrow void removeUnparsed()
+    {
+        used_ = offset_;
+    }
+
+
+    /**
+     * Returns:
+     *  the total size including unparsed buffer size.
+     */
+    @property nothrow size_t size() const
+    {
+        return parsed_ - offset_ + used_;
+    }
+
+
+    /**
+     * Returns:
+     *  the parsed size.
+     */
+    @property nothrow size_t parsedSize() const
+    {
+        return parsed_;
+    }
+
+
+    /**
+     * Returns:
+     *  the unparsed size of buffer.
+     */
+    @property nothrow size_t unparsedSize() const
+    {
+        return used_ - offset_;
+    }
+
+
+  private:
+    /**
+     * Initializes buffer.
+     *
+     * Params:
+     *  target     = byte buffer to deserialize
+     *  bufferSize = size limit of buffer size
+     */
+    void initializeBuffer(in ubyte[] target, in size_t bufferSize = 8192)
+    {
+        const size = target.length;
+
+        limit_  = size > bufferSize ? size : bufferSize;
+        buffer_ = new ubyte[](limit_); 
+        used_   = size;
+        buffer_[0..size] = target;
+    }
+
+
+    /**
+     * Expands internal buffer.
+     *
+     * Params:
+     *  size = new buffer size.
+     */
+    void expandBuffer(in size_t size)
+    {
+        // rewinds buffer(completed deserialization)
+        if (used_ == offset_ && !hasRaw_) {
+            used_ =  offset_ = 0;
+
+            if (limit_ >= size)
+                return;
+        }
+
+        if (limit_ < used_ + size)
+            limit_ = used_ + size;
+
+        // deserializing state is mid-flow(buffer has non-parsed data yet)
+        if (offset_ > 0) {
+            auto unparsed   = unparsedSize;
+            auto restBuffer = buffer_[offset_..used_];
+
+            if (hasRaw_) {
+                hasRaw_ = false;
+                buffer_ = new ubyte[](limit_);
+            } else {
+                restBuffer = restBuffer.dup;  // avoids overlapping copy
+            }
+
+            buffer_[0..unparsed] = restBuffer;
+            used_   = unparsed;
+            offset_ = 0;
+        } else {
+            buffer_.length = limit_;
+        }
+    }
+}
+
+
 /**
  * $(D Unpacker) is a $(D MessagePack) stream deserializer
  *
@@ -148,7 +323,7 @@ struct Unpacker
     /*
      * Element type of container
      */
-    enum ElementType
+    enum ContainerElement
     {
         ARRAY_ITEM,
         MAP_KEY,
@@ -163,12 +338,11 @@ struct Unpacker
     {
         static struct Container
         {
-            ElementType type;    // object container type
-            mp_Object   object;  // current object
-            mp_Object   key;     // for map object
-            size_t      count;   // container length
+            ContainerElement type;    // object container type
+            mp_Object        object;  // current object
+            mp_Object        key;     // for map object
+            size_t           count;   // container length
         }
-
 
         State       state;  // current state of deserialization
         size_t      trail;  // current deserializing size
@@ -176,14 +350,9 @@ struct Unpacker
         Container[] stack;  // storing objects
     }
 
-
-    ubyte[] buffer_;   // internal buffer
-    size_t  limit_;    // size limit of buffer
-    size_t  used_;     // index that buffer cosumed
-    size_t  offset_;   // index that buffer parsed
-    size_t  parsed_;   // total size of parsed message
-    bool    hasRaw_;   // indicates whether Raw object has been deserialized
     Context context_;  // stack environment for streaming deserialization
+
+    mixin InternalBuffer;
 
 
   public:
@@ -194,33 +363,15 @@ struct Unpacker
      *  target     = byte buffer to deserialize
      *  bufferSize = size limit of buffer size
      */
-    this(in ubyte[] target, size_t bufferSize = 8192)
+    this(in ubyte[] target, in size_t bufferSize = 8192)
     in
     {
         assert(target.length);
     }
     body
     {
-        const size = target.length;
-
-        expand(bufferSize < size ? size : bufferSize);
-
-        buffer_[0..size] = target;
-        used_            = size;
-
+        initializeBuffer(target, bufferSize);
         initializeContext();
-    }
-
-
-    /**
-     * Forwards to internal buffer.
-     *
-     * Returns:
-     *  the reference of internal buffer.
-     */
-    @property nothrow ubyte[] buffer()
-    {
-        return buffer_;
     }
 
 
@@ -278,100 +429,6 @@ struct Unpacker
 
 
     /**
-     * Appends $(D_PARAM target) to internal buffer.
-     *
-     * Params:
-     *  target = new buffer to deserialize.
-     */
-    void append(in ubyte[] target)
-    in
-    {
-        assert(target.length);
-    }
-    body
-    {
-        const size = target.length;
-
-        // lacks current buffer?
-        if (limit_ - used_ < size)
-            expand(size);
-
-        buffer_[used_..used_ + size] = target;
-        used_ += size;
-    }
-
-
-    /**
-     * Consumes buffer. This method is helper for buffer property.
-     * You must use this method if you write bytes to buffer directly.
-     *
-     * Params:
-     *  size = the number of consume.
-     */
-    nothrow void consume(size_t size)
-    {
-        if (used_ + size > limit_)
-            used_ = limit_;
-        else
-            used_ += size;
-    }
-
-
-    /**
-     * Skips unparsed buffer.
-     *
-     * Params:
-     *  size = the number to skip.
-     */
-    nothrow void skip(in size_t size)
-    {
-        if (offset_ + size > used_)
-            offset_ = used_;
-        else
-            offset_ += size;
-    }
-
-
-    /**
-     * Removes unparsed buffer.
-     */
-    nothrow void remove()
-    {
-        used_ = offset_;
-    }
-
-
-    /**
-     * Returns:
-     *  the total size including unparsed buffer size.
-     */
-    @property nothrow size_t size() const
-    {
-        return parsed_ - offset_ + used_;
-    }
-
-
-    /**
-     * Returns:
-     *  the parsed size.
-     */
-    @property nothrow size_t parsedSize() const
-    {
-        return parsed_;
-    }
-
-
-    /**
-     * Returns:
-     *  the unparsed size of buffer.
-     */
-    @property nothrow size_t unparsedSize() const
-    {
-        return used_ - offset_;
-    }
-
-
-    /**
      * Executes deserialization.
      *
      * Returns:
@@ -400,7 +457,7 @@ struct Unpacker
         /*
          * Helper for container deserialization
          */
-        bool startContainer(string Type)(ElementType type, size_t length)
+        bool startContainer(string Type)(ContainerElement type, size_t length)
         {
             mixin("callback" ~ Type ~ "((*stack)[top].object, length);");
 
@@ -437,11 +494,11 @@ struct Unpacker
                     cur++;
                     goto Lstart;
                 } else if (0x90 <= header && header <= 0x9f) {  // fix array
-                    if (!startContainer!"Array"(ElementType.ARRAY_ITEM, header & 0x0f))
+                    if (!startContainer!"Array"(ContainerElement.ARRAY_ITEM, header & 0x0f))
                         goto Lpush;
                     goto Lagain;
                 } else if (0x80 <= header && header <= 0x8f) {  // fix map
-                    if (!startContainer!"Map"(ElementType.MAP_KEY, header & 0x0f))
+                    if (!startContainer!"Map"(ContainerElement.MAP_KEY, header & 0x0f))
                         goto Lpush;
                     goto Lagain;
                 } else {
@@ -564,22 +621,22 @@ struct Unpacker
                     cur++;
                     goto Lstart;
                 case State.ARRAY16:
-                    if (!startContainer!"Array"(ElementType.ARRAY_ITEM,
+                    if (!startContainer!"Array"(ContainerElement.ARRAY_ITEM,
                                                 load16To!size_t(buffer_[base..base + trail])))
                         goto Lpush;
                     goto Lagain;
                 case State.ARRAY36:
-                    if (!startContainer!"Array"(ElementType.ARRAY_ITEM,
+                    if (!startContainer!"Array"(ContainerElement.ARRAY_ITEM,
                                                 load32To!size_t(buffer_[base..base + trail])))
                         goto Lpush;
                     goto Lagain;
                 case State.MAP16:
-                    if (!startContainer!"Map"(ElementType.MAP_KEY,
+                    if (!startContainer!"Map"(ContainerElement.MAP_KEY,
                                               load16To!size_t(buffer_[base..base + trail])))
                         goto Lpush;
                     goto Lagain;
                 case State.MAP32:
-                    if (!startContainer!"Map"(ElementType.MAP_KEY,
+                    if (!startContainer!"Map"(ContainerElement.MAP_KEY,
                                               load32To!size_t(buffer_[base..base + trail])))
                         goto Lpush;
                     goto Lagain;
@@ -595,7 +652,7 @@ struct Unpacker
             auto container = &(*stack)[top - 1];
 
             final switch (container.type) {
-            case ElementType.ARRAY_ITEM:
+            case ContainerElement.ARRAY_ITEM:
                 container.object.via.array ~= obj;
                 if (--container.count == 0) {
                     obj = container.object;
@@ -603,18 +660,18 @@ struct Unpacker
                     goto Lpush;
                 }
                 break;
-            case ElementType.MAP_KEY:
+            case ContainerElement.MAP_KEY:
                 container.key  = obj;
-                container.type = ElementType.MAP_VALUE;
+                container.type = ContainerElement.MAP_VALUE;
                 break;
-            case ElementType.MAP_VALUE:
+            case ContainerElement.MAP_VALUE:
                 container.object.via.map ~= mp_KeyValue(container.key, obj);
                 if (--container.count == 0) {
                     obj = container.object;
                     top--;
                     goto Lpush;
                 }
-                container.type = ElementType.MAP_KEY;
+                container.type = ContainerElement.MAP_KEY;
             }
 
           Lagain:
@@ -679,46 +736,6 @@ struct Unpacker
         context_.top          = 0;
         context_.stack.length = 1;
     }
-
-
-    /**
-     * Expands internal buffer.
-     *
-     * Params:
-     *  size = new buffer size.
-     */
-    void expand(size_t size)
-    {
-        // rewinds buffer(completed deserialization)
-        if (used_ == offset_ && !hasRaw_) {
-            used_ =  offset_ = 0;
-
-            if (limit_ >= size)
-                return;
-        }
-
-        if (limit_ < used_ + size)
-            limit_ = used_ + size;
-
-        // deserializing state is mid-flow(buffer has non-parsed data yet)
-        if (offset_ > 0) {
-            auto notParsed  = used_ - offset_;
-            auto restBuffer = buffer_[offset_..used_];
-
-            if (hasRaw_) {
-                hasRaw_ = false;
-                buffer_ = new ubyte[](limit_);
-            } else {
-                restBuffer = restBuffer.dup;  // avoids overlapping copy
-            }
-
-            buffer_[0..notParsed] = restBuffer;
-            used_   = notParsed;
-            offset_ = 0;
-        } else {
-            buffer_.length = limit_;
-        }
-    }
 }
 
 
@@ -732,7 +749,7 @@ struct Unpacker
  * Returns:
  *  a $(D Unpacker) object instantiated and initialized according to the arguments.
  */
-Unpacker unpacker(in ubyte[] target, size_t bufferSize = 8192)
+Unpacker unpacker(in ubyte[] target, in size_t bufferSize = 8192)
 {
     return typeof(return)(target, bufferSize);
 }

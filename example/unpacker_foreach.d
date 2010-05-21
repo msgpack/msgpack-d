@@ -37,7 +37,7 @@ void main()
         }
     }
 
-    unpacker.append(test2);
+    unpacker.feed(test2);
 
     foreach (unpacked; unpacker)
         writeln(unpacked.as!(string));

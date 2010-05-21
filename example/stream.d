@@ -20,7 +20,7 @@ void deserializer(Tid tid)
     bool endLoop;
 
     while (true) {
-        receive((ubyte[] data) { unpacker.append(data); },
+        receive((ubyte[] data) { unpacker.feed(data); },
                 (bool    end)  { endLoop = end; });
 
         if (endLoop)
