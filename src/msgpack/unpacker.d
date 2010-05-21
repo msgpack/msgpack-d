@@ -105,7 +105,6 @@ mixin template InternalBuffer()
 {
   private:
     ubyte[] buffer_;  // internal buffer
-    size_t  limit_;   // size limit of buffer
     size_t  used_;    // index that buffer cosumed
     size_t  offset_;  // index that buffer parsed
     size_t  parsed_;  // total size of parsed message
@@ -138,10 +137,49 @@ mixin template InternalBuffer()
     }
     body
     {
+        /*
+         * Expands internal buffer.
+         *
+         * Params:
+         *  size = new buffer size to append.
+         */
+        void expandBuffer(in size_t size)
+        {
+            // rewinds buffer(completed deserialization)
+            if (used_ == offset_ && !hasRaw_) {
+                used_ =  offset_ = 0;
+
+                if (buffer_.length < size)
+                    buffer_.length = size;
+
+                return;
+            }
+
+            // deserializing state is mid-flow(buffer has non-parsed data yet)
+            auto unparsed = buffer_[offset_..used_];
+            auto restSize = buffer_.length - used_ + offset_;
+            auto newSize  = size > restSize ? unparsedSize + size : buffer_.length;
+
+            if (hasRaw_) {
+                hasRaw_ = false;
+                buffer_ = new ubyte[](newSize);
+            } else {
+                buffer_.length = newSize;
+
+                // avoids overlapping copy
+                auto area = buffer_[0..unparsedSize];
+                unparsed  = area.overlap(unparsed) ? unparsed.dup : unparsed;
+            }
+
+            buffer_[0..unparsedSize] = unparsed;
+            used_   = unparsedSize;
+            offset_ = 0;
+        }
+
         const size = target.length;
 
         // lacks current buffer?
-        if (limit_ - used_ < size)
+        if (buffer_.length - used_ < size)
             expandBuffer(size);
 
         buffer_[used_..used_ + size] = target;
@@ -158,8 +196,8 @@ mixin template InternalBuffer()
      */
     nothrow void bufferConsumed(in size_t size)
     {
-        if (used_ + size > limit_)
-            used_ = limit_;
+        if (used_ + size > buffer_.length)
+            used_ = buffer_.length;
         else
             used_ += size;
     }
@@ -216,50 +254,9 @@ mixin template InternalBuffer()
     {
         const size = target.length;
 
-        limit_  = size > bufferSize ? size : bufferSize;
-        buffer_ = new ubyte[](limit_); 
+        buffer_ = new ubyte[](size > bufferSize ? size : bufferSize); 
         used_   = size;
         buffer_[0..size] = target;
-    }
-
-
-    /**
-     * Expands internal buffer.
-     *
-     * Params:
-     *  size = new buffer size.
-     */
-    void expandBuffer(in size_t size)
-    {
-        // rewinds buffer(completed deserialization)
-        if (used_ == offset_ && !hasRaw_) {
-            used_ =  offset_ = 0;
-
-            if (limit_ >= size)
-                return;
-        }
-
-        if (limit_ < used_ + size)
-            limit_ = used_ + size;
-
-        // deserializing state is mid-flow(buffer has non-parsed data yet)
-        if (offset_ > 0) {
-            auto unparsed   = unparsedSize;
-            auto restBuffer = buffer_[offset_..used_];
-
-            if (hasRaw_) {
-                hasRaw_ = false;
-                buffer_ = new ubyte[](limit_);
-            } else {
-                restBuffer = restBuffer.dup;  // avoids overlapping copy
-            }
-
-            buffer_[0..unparsed] = restBuffer;
-            used_   = unparsed;
-            offset_ = 0;
-        } else {
-            buffer_.length = limit_;
-        }
     }
 }
 
