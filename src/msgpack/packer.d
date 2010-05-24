@@ -42,8 +42,6 @@ stdout.rawWrite(buffer.data);  // or packer.buffer.data
 struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer, ubyte[]))
 {
   private:
-    alias .Packer!(Buffer) Packer;
-
     enum size_t Offset = 1;  // type-information offset
 
     Buffer                          buffer_;  // the buffer to write
@@ -538,6 +536,32 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
 
 
     /**
+     * Serializes $(D_PARAM Types) objects and writes to buffer.
+     *
+     * Params:
+     *  objects = the contents to serialize.
+     *
+     * Returns:
+     *  this to method chain.
+     */
+    template pack(Types...) if (Types.length > 1)
+    {
+        ref Packer pack(auto ref Types objects)
+        {
+            foreach (i, T; Types)
+                pack(objects[i]);
+
+            return this;
+        }
+    }
+    /*
+     * @@@BUG@@@ http://d.puremagic.com/issues/show_bug.cgi?id=2460
+    ref Packer pack(Types...)(auto ref Types objects) if (Types.length > 1)
+    { // do stuff }
+    */
+
+
+    /**
      * Serializes type-information to buffer.
      *
      * Params:
@@ -678,7 +702,7 @@ unittest
         ubyte[] result = [Format.NIL, Format.TRUE, Format.FALSE,
                                       Format.TRUE, Format.FALSE];
 
-        packer.packNil().packTrue().packFalse().pack(true).pack(false);
+        packer.packNil().packTrue().packFalse().pack(true, false);
         foreach (i, value; packer.buffer.data)
             assert(value == result[i]);
     }

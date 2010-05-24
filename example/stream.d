@@ -16,7 +16,7 @@ import msgpack.unpacker;
 
 void deserializer(Tid tid)
 {
-    auto unpacker = unpacker(null);
+    auto unpacker = unpacker(cast(ubyte[])null);
     bool endLoop;
 
     while (true) {

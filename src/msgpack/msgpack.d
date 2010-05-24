@@ -24,7 +24,7 @@ version(unittest) import std.typecons, msgpack.common;
 /**
  * Serializes $(D_PARAM args).
  *
- * Single object if $(D_PARAM args) lenght equals 1,
+ * Single object if the length of $(D_PARAM args) == 1,
  * otherwise array object.
  *
  * Params:
@@ -42,8 +42,7 @@ ubyte[] pack(Args...)(in Args args)
         packer.pack(args[0]);
     } else {
         packer.packArray(Args.length);
-        foreach (arg; args)
-            packer.pack(arg);
+        packer.pack(args);
     }
 
     return packer.buffer.data;
@@ -91,15 +90,23 @@ Unpacked unpack(Tdummy = void)(in ubyte[] buffer)
 /**
  * Deserializes $(D_PARAM buffer) using direct conversion deserializer.
  *
+ * Single object if the length of $(D_PARAM args) == 1,
+ * otherwise array object.
+ *
  * Params:
  *  buffer = the buffer to deserialize.
- *  value  = the reference of value to assign.
+ *  args   = the references of values to assign.
  */
-void unpack(T)(in ubyte[] buffer, ref T value)
+void unpack(Args...)(in ubyte[] buffer, ref Args args)
 {
     auto unpacker = unpacker!(false)(buffer);
 
-    unpacker.unpack(value);
+    static if (Args.length == 1) {
+        unpacker.unpack(args[0]);
+    } else {
+        unpacker.unpackArray();
+        unpacker.unpack(args);
+    }
 }
 
 
@@ -114,6 +121,13 @@ unittest
         Tuple!(uint, string) result, test = tuple(1, "Hi!");
         
         unpack(pack(test), result);
+
+        assert(result == test);
+
+        test.field[0] = 2;
+        test.field[1] = "Hey!";
+
+        unpack(pack(test.field[0], test.field[1]), result.field[0], result.field[1]);
 
         assert(result == test);
     }

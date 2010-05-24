@@ -16,7 +16,7 @@ void main()
     SimpleBuffer buffer;
     auto packer = packer(&buffer);
 
-    packer.packArray(5).packNil().packTrue().pack("Hi!").pack(-1).pack([1, 2]);
+    packer.packArray(5).packNil().packTrue().pack("Hi!", -1, [1, 2]);
 
     auto unpacker = unpacker(packer.buffer.data);
 

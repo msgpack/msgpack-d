@@ -233,7 +233,7 @@ mixin template InternalBuffer()
  * if (size != 3)
  *     throw new Exception("Size is mismatched!");
  *
- * unpacker.unpack(n).unpack(d).unpack(b);
+ * unpacker.unpack(n).unpack(d).unpack(b); // or unpack(n, d, b)
  *
  * // or
  * Tuple!(uint, double, true) record;
@@ -243,8 +243,6 @@ mixin template InternalBuffer()
 struct Unpacker(bool isStream : false)
 {
   private:
-    alias .Unpacker!(isStream) Unpacker;
-
     enum Offset = 1;
 
     mixin InternalBuffer;
@@ -259,11 +257,6 @@ struct Unpacker(bool isStream : false)
      *  bufferSize = size limit of buffer size
      */
     this(in ubyte[] target, in size_t bufferSize = 8192)
-    in
-    {
-        assert(target.length);
-    }
-    body
     {
         initializeBuffer(target, bufferSize);
     }
@@ -291,7 +284,7 @@ struct Unpacker(bool isStream : false)
      *  UnpackException when doesn't read from buffer or precision loss occurs and
      *  InvalidTypeException when $(D_PARAM T) type doesn't match serialized type.
      */
-    Unpacker unpack(T)(ref T value) if (is(Unqual!T == bool))
+    ref Unpacker unpack(T)(ref T value) if (is(Unqual!T == bool))
     {
         canRead(Offset, 0);
         const header = read();
@@ -312,7 +305,7 @@ struct Unpacker(bool isStream : false)
 
 
     /// ditto
-    Unpacker unpack(T)(ref T value) if (isUnsigned!(Unqual!T))
+    ref Unpacker unpack(T)(ref T value) if (isUnsigned!(Unqual!T))
     {
         canRead(Offset, 0);
         const header = read();
@@ -356,7 +349,7 @@ struct Unpacker(bool isStream : false)
 
 
     /// ditto
-    Unpacker unpack(T)(ref T value) if (isSigned!(Unqual!T) && !isFloatingPoint!(Unqual!T))
+    ref Unpacker unpack(T)(ref T value) if (isSigned!(Unqual!T) && !isFloatingPoint!(Unqual!T))
     {
         canRead(Offset, 0);
         const header = read();
@@ -428,7 +421,7 @@ struct Unpacker(bool isStream : false)
 
 
     /// ditto
-    Unpacker unpack(T)(ref T value) if (isFloatingPoint!(Unqual!T))
+    ref Unpacker unpack(T)(ref T value) if (isFloatingPoint!(Unqual!T))
     {
         canRead(Offset, 0);
         const header = read();
@@ -499,7 +492,7 @@ struct Unpacker(bool isStream : false)
      *  UnpackException when doesn't read from buffer or precision loss occurs and
      *  InvalidTypeException when $(D_PARAM T) type doesn't match serialized type.
      */
-    Unpacker unpack(T)(ref T array) if (isArray!T)
+    ref Unpacker unpack(T)(ref T array) if (isArray!T)
     {
         alias typeof(T.init[0]) U;
 
@@ -541,7 +534,7 @@ struct Unpacker(bool isStream : false)
 
 
     /// ditto
-    Unpacker unpack(T)(ref T array) if (isAssociativeArray!T)
+    ref Unpacker unpack(T)(ref T array) if (isAssociativeArray!T)
     {
         alias typeof(T.init.keys[0])   K;
         alias typeof(T.init.values[0]) V;
@@ -579,22 +572,30 @@ struct Unpacker(bool isStream : false)
      * Returns:
      *  this to method chain.
      */
-    Unpacker unpack(T, Args...)(ref T object, Args args) if (is(Unqual!T == class))
+    template unpack(T, Args...) if (is(Unqual!T == class))
     {
-        static if (!__traits(compiles, { T t; t.mp_unpack(this); }))
-            static assert(false, T.stringof ~ " is not a MessagePackable object");
+        ref Unpacker unpack(ref T object, auto ref Args args)
+        {
+            static if (!__traits(compiles, { T t; t.mp_unpack(this); }))
+                static assert(false, T.stringof ~ " is not a MessagePackable object");
 
-        if (object is null)
-            object = new T(args);
+            if (object is null)
+                object = new T(args);
 
-        object.mp_unpack(this);
+            object.mp_unpack(this);
 
-        return this;
+            return this;
+        }
     }
+    /*
+     * @@@BUG@@@ http://d.puremagic.com/issues/show_bug.cgi?id=2460
+    ref Unpacker unpack(T, Args...)(ref T object, auto ref Args args) if (is(Unqual!T == class))
+    { // do stuff }
+    */
 
 
     /// ditto
-    Unpacker unpack(T)(ref T object) if (is(Unqual!T == struct))
+    ref Unpacker unpack(T)(ref T object) if (is(Unqual!T == struct))
     {
         static if (__traits(compiles, { T t; t.mp_unpack(this); })) {
             object.mp_unpack(this);
@@ -623,13 +624,21 @@ struct Unpacker(bool isStream : false)
      * Returns:
      *  this to method chain.
      */
-    Unpacker unpack(Types...)(ref Types objects) if (Types.length > 1)
+    template unpack(Types...) if (Types.length > 1)
     {
-        foreach (i, T; Types)
-            unpack!(T)(objects[i]);
+        ref Unpacker unpack(ref Types objects)
+        {
+            foreach (i, T; Types)
+                unpack!(T)(objects[i]);
 
-        return this;
+            return this;
+        }
     }
+    /*
+     * @@@BUG@@@ http://d.puremagic.com/issues/show_bug.cgi?id=2460
+    ref Unpacker unpack(Types...)(ref Types objects) if (Types.length > 1)
+    { // do stuff }
+     */
 
 
     /**
@@ -740,7 +749,7 @@ struct Unpacker(bool isStream : false)
      *  UnpackException when doesn't read from buffer or precision loss occurs and
      *  InvalidTypeException when $(D_PARAM T) type doesn't match serialized type.
      */
-    Unpacker unpackNil(T)(ref T value)
+    ref Unpacker unpackNil(T)(ref T value)
     {
         canRead(Offset, 0);
         const header = read();
@@ -763,7 +772,7 @@ struct Unpacker(bool isStream : false)
      * -----
      * // serialized data is "[1, 2][3, 4][5, 6][...".
      * auto unpacker = unpacker!(false)(serializedData);
-     * foreach (n, d; &unpacker.scan!(int, int))  // equals "foreach (int n, int d; unpacker)"
+     * foreach (n, d; &unpacker.scan!(int, int))  // == "foreach (int n, int d; unpacker)"
      *     writeln(n, d); // 1st loop "1, 2", 2nd loop "3, 4"...
      * -----
      */
@@ -1166,11 +1175,6 @@ struct Unpacker(bool isStream : true)
      *  bufferSize = size limit of buffer size
      */
     this(in ubyte[] target, in size_t bufferSize = 8192)
-    in
-    {
-        assert(target.length);
-    }
-    body
     {
         initializeBuffer(target, bufferSize);
         initializeContext();
@@ -1565,8 +1569,7 @@ unittest
     enum Size = mp_Type.max + 1;
 
     packer.packArray(Size);
-    packer.packNil().packTrue().pack(1).pack(-2).pack("Hi!");
-    packer.pack([1]).pack([1:1]).pack(real.max);
+    packer.packNil().packTrue().pack(1, -2, "Hi!", [1], [1:1], real.max);
 
     // deserialize
     auto unpacker = unpacker(packer.buffer.data); unpacker.execute();
