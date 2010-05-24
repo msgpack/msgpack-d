@@ -9,7 +9,13 @@
  */
 module msgpack.util;
 
-public import msgpack.object;
+public
+{
+    import msgpack.object;
+    import msgpack.unpacker;
+}
+
+version(unittest) import msgpack.packer, msgpack.buffer;
 
 
 @trusted:
@@ -49,7 +55,7 @@ mixin template MessagePackable(Members...)
 
 
         /**
-         * Deserializes $(D MessagePack) object to members.
+         * Deserializes $(D MessagePack) object to members for stream deserializer.
          *
          * Params:
          *  object = the MessagePack object to unpack.
@@ -65,6 +71,26 @@ mixin template MessagePackable(Members...)
             foreach (i, member; this.tupleof)
                 this.tupleof[i] = object.via.array[i].as!(typeof(member));
         }
+
+
+        /**
+         * Deserializes $(D MessagePack) object to members for direct conversion deserializer.
+         *
+         * Params:
+         *  object = the reference to direct conversion deserializer.
+         *
+         * Throws:
+         *  InvalidTypeException if deserialized object size is mismatched.
+         */
+        void mp_unpack(ref Unpacker!(false) unpacker)
+        {
+            auto length = unpacker.unpackArray();
+            if (length != this.tupleof.length)
+                throw new InvalidTypeException("Deserialized object size is mismatched");
+
+            foreach (i, member; this.tupleof)
+                unpacker.unpack(this.tupleof[i]);
+        }
     } else {
         /**
          * Member selecting version of mp_pack.
@@ -78,7 +104,7 @@ mixin template MessagePackable(Members...)
 
 
         /**
-         * Member selecting version of mp_unpack. 
+         * Member selecting version of mp_unpack for stream deserializer.
          */
         void mp_unpack(mp_Object object)
         {
@@ -88,11 +114,23 @@ mixin template MessagePackable(Members...)
             foreach (i, member; Members)
                 mixin(member ~ "= object.via.array[i].as!(typeof(" ~ member ~ "));");
         }
+
+
+        /**
+         * Member selecting version of mp_unpack for direct converion deserializer.
+         */
+        void mp_unpack(ref Unpacker!(false) unpacker)
+        {
+            auto length = unpacker.unpackArray();
+            if (length != Members.length)
+                throw new InvalidTypeException("Deserialized object size is mismatched");
+
+            foreach (member; Members)
+                unpacker.unpack(mixin(member));
+        }
     }
 }
 
-
-version(unittest) import msgpack.packer, msgpack.buffer, msgpack.unpacker;
 
 unittest
 {
@@ -103,16 +141,26 @@ unittest
             mixin MessagePackable;
         }
 
-        SimpleBuffer buffer; auto packer = packer(&buffer);
+        mixin DefinePacker;
 
         S orig = S(10, "Hi!"); orig.mp_pack(packer);
 
-        auto unpacker = unpacker(packer.buffer.data); unpacker.execute();
+        { // stream
+            auto unpacker = unpacker(packer.buffer.data); unpacker.execute();
 
-        S result; result.mp_unpack(unpacker.unpacked);
+            S result; result.mp_unpack(unpacker.unpacked);
 
-        assert(result.num == 10);
-        assert(result.str == "Hi!");
+            assert(result.num == 10);
+            assert(result.str == "Hi!");
+        }
+        { // direct conversion
+            auto unpacker = unpacker!(false)(packer.buffer.data);
+
+            S result; unpacker.unpack(result);
+
+            assert(result.num == 10);
+            assert(result.str == "Hi!");
+        }
     }
     { // member select
         static class C
@@ -125,14 +173,23 @@ unittest
             mixin MessagePackable!("num");
         }
 
-        SimpleBuffer buffer; auto packer = packer(&buffer);
+        mixin DefinePacker;
 
         C orig = new C(10, "Hi!"); orig.mp_pack(packer);
 
-        auto unpacker = unpacker(packer.buffer.data); unpacker.execute();
+        { // stream
+            auto unpacker = unpacker(packer.buffer.data); unpacker.execute();
 
-        C result = new C; result.mp_unpack(unpacker.unpacked);
+            C result = new C; result.mp_unpack(unpacker.unpacked);
 
-        assert(result.num == 10);
+            assert(result.num == 10);
+        }
+        { // direct conversion
+            auto unpacker = unpacker!(false)(packer.buffer.data);
+
+            C result; unpacker.unpack(result);
+
+            assert(result.num == 10);
+        }
     }
 }

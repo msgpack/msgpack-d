@@ -15,7 +15,7 @@ import msgpack.buffer;
 import msgpack.packer;
 import msgpack.unpacker;
 
-version(unittest) import msgpack.common;
+version(unittest) import std.typecons, msgpack.common;
 
 
 @trusted:
@@ -66,7 +66,7 @@ unittest
 
 
 /**
- * Deserializes $(D_PARAM buffer).
+ * Deserializes $(D_PARAM buffer) using stream deserializer.
  *
  * Params:
  *  buffer = the buffer to deserialize.
@@ -77,7 +77,7 @@ unittest
  * Throws:
  *  UnpackException if deserialization doesn't succeed.
  */
-Unpacked unpack(in ubyte[] buffer)
+Unpacked unpack(Tdummy = void)(in ubyte[] buffer)
 {
     auto unpacker = unpacker(buffer);
 
@@ -88,9 +88,33 @@ Unpacked unpack(in ubyte[] buffer)
 }
 
 
+/**
+ * Deserializes $(D_PARAM buffer) using direct conversion deserializer.
+ *
+ * Params:
+ *  buffer = the buffer to deserialize.
+ *  value  = the reference of value to assign.
+ */
+void unpack(T)(in ubyte[] buffer, ref T value)
+{
+    auto unpacker = unpacker!(false)(buffer);
+
+    unpacker.unpack(value);
+}
+
+
 unittest
 {
-    auto result = unpack(pack(false));
+    { // stream
+        auto result = unpack(pack(false));
 
-    assert(result.via.boolean == false);
+        assert(result.via.boolean == false);
+    }
+    { // direct conversion
+        Tuple!(uint, string) result, test = tuple(1, "Hi!");
+        
+        unpack(pack(test), result);
+
+        assert(result == test);
+    }
 }
