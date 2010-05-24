@@ -215,7 +215,9 @@ mixin template InternalBuffer()
 
 
 /**
- * This $(D Unpacker) is a $(D MessagePack) direct conversion deserializer
+ * This $(D Unpacker) is a $(D MessagePack) direct-conversion deserializer
+ *
+ * This implementation 
  *
  * Example:
  * -----
@@ -504,7 +506,7 @@ struct Unpacker(bool isStream : false)
         // Raw bytes
         static if (isByte!(U) || isSomeChar!(U)) {
             auto length = unpackRaw();
-            uint offset = (length < 32 ? 0 : length < 65536 ? ushort.sizeof : uint.sizeof);
+            auto offset = (length < 32 ? 0 : length < 65536 ? ushort.sizeof : uint.sizeof);
             if (length == 0)
                 return this;
 
@@ -515,6 +517,9 @@ struct Unpacker(bool isStream : false)
 
             canRead(length, offset + Offset);
             array = cast(T)read(length);
+
+            static if (isDynamicArray!T)
+                hasRaw_ = true;
         } else {
             auto length = unpackArray();
             if (length == 0)
@@ -967,9 +972,9 @@ struct Unpacked
 
 
 /**
- * $(D Unpacker) is a $(D MessagePack) stream deserializer
+ * This $(D Unpacker) is a $(D MessagePack) stream deserializer
  *
- * This implementation supports zero copy deserialization of Raw object.
+ * This implementation enables you to load multiple objects from a stream(like network).
  *
  * Example:
  * -----
@@ -1450,7 +1455,7 @@ struct Unpacker(bool isStream : true)
  *
  * Returns:
  *  a $(D Unpacker) object instantiated and initialized according to the arguments.
- *  Stream deserializer if $(D_PARAM isStream) is true, otherwise direct conversion deserializer.
+ *  Stream deserializer if $(D_PARAM isStream) is true, otherwise direct-conversion deserializer.
  */
 Unpacker!(isStream) unpacker(bool isStream = true)(in ubyte[] target, in size_t bufferSize = 8192)
 {
