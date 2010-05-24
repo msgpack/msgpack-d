@@ -523,7 +523,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
 
 
     /// ditto
-    ref Packer pack(T)(ref T object) if (is(Unqual!T == struct))
+    ref Packer pack(T)(auto ref T object) if (is(Unqual!T == struct))
     {
         static if (__traits(compiles, { T t; t.mp_pack(this); })) {
             object.mp_pack(this);
