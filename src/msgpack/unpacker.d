@@ -12,10 +12,11 @@ module msgpack.unpacker;
 public import msgpack.object;
 
 import std.array;  // for Range
+import std.traits;
 
 import msgpack.common;
 
-version(unittest) import msgpack.packer, msgpack.buffer;
+version(unittest) import std.typetuple, std.typecons, msgpack.packer, msgpack.buffer;
 
 
 @trusted:
@@ -257,6 +258,681 @@ mixin template InternalBuffer()
         buffer_ = new ubyte[](size > bufferSize ? size : bufferSize); 
         used_   = size;
         buffer_[0..size] = target;
+    }
+}
+
+
+/**
+ * $(D DUnpacker) is a $(D MessagePack) direct conversion deserializer.
+ */
+struct DUnpack
+{
+  private:
+    enum Offset = 1;
+
+    mixin InternalBuffer;
+
+
+  public:
+    /**
+     * Constructs a $(D Unpacker).
+     *
+     * Params:
+     *  target     = byte buffer to deserialize
+     *  bufferSize = size limit of buffer size
+     */
+    this(in ubyte[] target, in size_t bufferSize = 8192)
+    in
+    {
+        assert(target.length);
+    }
+    body
+    {
+        initializeBuffer(target, bufferSize);
+    }
+
+
+    /**
+     * Clears some states for next deserialization.
+     */
+    nothrow void clear()
+    {
+        parsed_ = 0;
+    }
+
+
+    /**
+     * Deserializes $(D_PARAM T) object and assigns to $(D_PARAM value).
+     *
+     * Params:
+     *  value = the reference of value to assign.
+     *
+     * Returns:
+     *  this to method chain.
+     *
+     * Throws:
+     *  UnpackException when doesn't read from buffer or precision loss occurs and
+     *  InvalidTypeException when $(D_PARAM T) type doesn't match serialized type.
+     */
+    DUnpack unpack(T)(ref T value) if (is(Unqual!T == bool))
+    {
+        canRead(Offset, 0);
+        const header = read();
+
+        switch (header) {
+        case Format.TRUE:
+            value = true;
+            break;
+        case Format.FALSE:
+            value = false;
+            break;
+        default:
+            rollback(0);
+        }
+
+        return this;
+    }
+
+
+    /// ditto
+    //DUnpack unpack(T)(ref T value) if (__traits(isUnsigned, Unqual!T))
+    DUnpack unpack(T)(ref T value) if (isUnsigned!(Unqual!T))
+    {
+        canRead(Offset, 0);
+        const header = read();
+
+        if (0x00 <= header && header <= 0x7f) {
+            value = header;
+        } else {
+            switch (header) {
+            case Format.UINT8:
+                canRead(ubyte.sizeof);
+                value = read();
+                break;
+            case Format.UINT16:
+                canRead(ushort.sizeof);
+                auto us = load16To!ushort(read(ushort.sizeof));
+                if (us > T.max)
+                    rollback(ushort.sizeof);
+                value = cast(T)us;
+                break;
+            case Format.UINT32:
+                canRead(uint.sizeof);
+                auto ui = load32To!uint(read(uint.sizeof));
+                if (ui > T.max)
+                    rollback(uint.sizeof);
+                value = cast(T)ui;
+                break;
+            case Format.UINT64:
+                canRead(ulong.sizeof);
+                auto ul = load64To!ulong(read(ulong.sizeof));
+                if (ul > T.max)
+                    rollback(ulong.sizeof);
+                value = cast(T)ul;
+                break;
+            default:
+                rollback(0);
+            }
+        }
+
+        return this;
+    }
+
+
+    /// ditto
+    //DUnpack unpack(T)(ref T value) if (!__traits(isUnsigned, Unqual!T) &&
+    DUnpack unpack(T)(ref T value) if (isSigned!(Unqual!T) && !isFloatingPoint!(Unqual!T))
+    {
+        canRead(Offset, 0);
+        const header = read();
+
+        if ((0x00 <= header && header <= 0x7f) || (0xe0 <= header && header <= 0xff)) {
+            value = cast(T)header;
+        } else {
+            switch (header) {
+            case Format.UINT8:
+                canRead(ubyte.sizeof);
+                auto ub = read();
+                if (ub > T.max)
+                    rollback(ubyte.sizeof);
+                value = cast(T)ub;
+                break;
+            case Format.UINT16:
+                canRead(ushort.sizeof);
+                auto us = load16To!ushort(read(ushort.sizeof));
+                if (us > T.max)
+                    rollback(ushort.sizeof);
+                value = cast(T)us;
+                break;
+            case Format.UINT32:
+                canRead(uint.sizeof);
+                auto ui = load32To!uint(read(uint.sizeof));
+                if (ui > T.max)
+                    rollback(uint.sizeof);
+                value = cast(T)ui;
+                break;
+            case Format.UINT64:
+                canRead(ulong.sizeof);
+                auto ul = load64To!ulong(read(ulong.sizeof));
+                if (ul > T.max)
+                    rollback(ulong.sizeof);
+                value = cast(T)ul;
+                break;
+            case Format.INT8:
+                canRead(byte.sizeof);
+                value = cast(byte)read();
+                break;
+            case Format.INT16:
+                canRead(short.sizeof);
+                auto s = load16To!short(read(short.sizeof));
+                if (s < T.min || T.max < s)
+                    rollback(short.sizeof);
+                value = cast(T)s;
+                break;
+            case Format.INT32:
+                canRead(int.sizeof);
+                auto i = load32To!int(read(int.sizeof));
+                if (i < T.min || T.max < i)
+                    rollback(int.sizeof);
+                value = cast(T)i;
+                break;
+            case Format.INT64:
+                canRead(long.sizeof);
+                auto l = load64To!long(read(long.sizeof));
+                if (l < T.min || T.max < l)
+                    rollback(long.sizeof);
+                value = cast(T)l;
+                break;
+            default:
+                rollback(0);
+            }
+        }
+
+        return this;
+    }
+
+
+    /// ditto
+    DUnpack unpack(T)(ref T value) if (isFloatingPoint!(Unqual!T))
+    {
+        canRead(Offset, 0);
+        const header = read();
+
+        switch (header) {
+        case Format.FLOAT:
+            _f temp;
+
+            canRead(uint.sizeof);
+            temp.i = load32To!uint(read(uint.sizeof));
+            value  = cast(T)temp.f;
+            break;
+        case Format.DOUBLE:
+            // check precision loss
+            static if (is(Unqual!T == float))
+                rollback(0);
+
+            _d temp;
+
+            canRead(ulong.sizeof);
+            temp.i = load64To!ulong(read(ulong.sizeof));
+            value  = cast(T)temp.f;
+            break;
+        case Format.REAL:
+            // check precision loss
+            static if (is(Unqual!T == float) || is(Unqual!T == double))
+                rollback(0);
+
+            canRead(ubyte.sizeof);
+            if (read() != real.sizeof)
+                throw new UnpackException("Real type on this environment is different from serialized real type.");
+
+            _r temp;
+
+            canRead(_r.sizeof);
+            temp.fraction = load64To!(typeof(temp.fraction))(read(temp.fraction.sizeof));
+            mixin("temp.exponent = load" ~ ES.stringof[0..2] ~ // delete u suffix
+                  "To!(typeof(temp.exponent))(read(temp.exponent.sizeof));");
+            value = temp.f;
+            break;
+        default:
+            rollback(0);
+        }
+
+        return this;
+    }
+
+
+    /**
+     * Deserializes $(D_PARAM T) object and assigns to $(D_PARAM array).
+     *
+     * This is convenient method for array deserialization.
+     * Rollback will be successful if you deserialize raw type(ubyte[] or string).
+     * But rollback wiil be unsuccessful if you deserialize other type(int[], double[int], etc..)
+     *
+     * No assign if the length of deserialized object is 0.
+     *
+     * In a static array, this method checks length. Rollbacks and throws exception
+     * if length of $(D_PARAM array) is different from length of deserialized object.
+     *
+     * Params:
+     *  array = the reference of array to assign.
+     *
+     * Returns:
+     *  this to method chain.
+     *
+     * Throws:
+     *  UnpackException when doesn't read from buffer or precision loss occurs and
+     *  InvalidTypeException when $(D_PARAM T) type doesn't match serialized type.
+     */
+    DUnpack unpack(T)(ref T array) if (isArray!T)
+    {
+        alias typeof(T.init[0]) U;
+
+        // Raw bytes
+        static if (isByte!(U) || isSomeChar!(U)) {
+            auto length = unpackRaw();
+            uint offset = (length < 32 ? 0 : length < 65536 ? ushort.sizeof : uint.sizeof);
+            if (length == 0)
+                return this;
+
+            static if (isStaticArray!(T)) {
+                if (length != array.length)
+                    rollback(offset);
+            }
+
+            canRead(length, offset + Offset);
+            array = cast(T)read(length);
+        } else {
+            auto length = unpackArray();
+            if (length == 0)
+                return this;
+
+            static if (isStaticArray!(T)) {
+                if (length != array.length)
+                    rollback(length < 16 ? 0 : length < 65536 ? ushort.sizeof : uint.sizeof);
+            } else {
+                array.length = length;
+            }
+
+            foreach (i; 0..length)
+                unpack(array[i]);
+        }
+
+        return this;
+    }
+
+
+    /// ditto
+    DUnpack unpack(T)(ref T array) if (isAssociativeArray!T)
+    {
+        alias typeof(T.init.keys[0])   K;
+        alias typeof(T.init.values[0]) V;
+
+        auto length = unpackMap();
+        if (length == 0)
+            return this;
+
+        foreach (i; 0..length) {
+            K k; unpack(k);
+            V v; unpack(v);
+            array[k] = v;
+        }
+
+        return this;
+    }
+
+
+    /**
+     * Deserializes $(D_PARAM T) object and assigns to $(D_PARAM array).
+     *
+     * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D mp_unpack) method.
+     * $(D mp_unpack) signature is:
+     * -----
+     * void mp_unpack(ref Unpacker unpacker)
+     * -----
+     * Assumes $(D std.typecons.Tuple) if $(D_KEYWORD struct) doens't implement $(D mp_unpack).
+     * Checks length if $(D_PARAM T) is a $(D std.typecons.Tuple).
+     *
+     * Params:
+     *  array = the reference of array to assign.
+     *  args  = the arguments to class constructor(class only).
+     *          This is used at new statement if $(D_PARAM object) is $(D_KEYWORD null).
+     *
+     * Returns:
+     *  this to method chain.
+     */
+    DUnpack unpack(T, Args...)(ref T object, Args args) if (is(Unqual!T == class))
+    {
+        static if (!__traits(compiles, { T t; t.mp_unpack(this); }))
+            static assert(false, T.stringof ~ " is not a MessagePackable object");
+
+        if (object is null)
+            object = new T(args);
+
+        object.mp_unpack(this);
+
+        return this;
+    }
+
+
+    /// ditto
+    DUnpack unpack(T)(ref T object) if (is(Unqual!T == struct))
+    {
+        static if (__traits(compiles, { T t; t.mp_unpack(this); })) {
+            object.mp_unpack(this);
+        } else {
+            auto length = unpackArray();
+            if (length == 0)
+                return this;
+
+            if (length != T.Types.length)
+                rollback(length < 16 ? 0 : length < 65536 ? ushort.sizeof : uint.sizeof);
+
+            foreach (i, Type; T.Types)
+                unpack(object.field[i]);
+        }
+
+        return this;
+    }
+
+
+    /**
+     * Deserializes type-information of container.
+     *
+     * Returns:
+     *  the container size.
+     */
+    size_t unpackArray()
+    {
+        canRead(Offset, 0);
+        const  header = read();
+        size_t length;
+
+        if (0x90 <= header && header <= 0x9f) {
+            length = header & 0x0f;
+        } else {
+            switch (header) {
+            case Format.ARRAY16:
+                canRead(ushort.sizeof);
+                length = load16To!size_t(read(ushort.sizeof));
+                break;
+            case Format.ARRAY32:
+                canRead(uint.sizeof);
+                length = load32To!size_t(read(uint.sizeof));
+                break;
+            case Format.NIL:
+                break;
+            default:
+                rollback(0);
+            }
+        }
+
+        return length;
+    }
+
+
+    /// ditto
+    size_t unpackMap()
+    {
+        canRead(Offset, 0);
+        const  header = read();
+        size_t length;
+
+        if (0x80 <= header && header <= 0x8f) {
+            length = header & 0x0f;
+        } else {
+            switch (header) {
+            case Format.MAP16:
+                canRead(ushort.sizeof);
+                length = load16To!size_t(read(ushort.sizeof));
+                break;
+            case Format.MAP32:
+                canRead(uint.sizeof);
+                length = load32To!size_t(read(uint.sizeof));
+                break;
+            case Format.NIL:
+                break;
+            default:
+                rollback(0);
+            }
+        }
+
+        return length;
+    }
+
+
+    /// ditto
+    size_t unpackRaw()
+    {
+        canRead(Offset, 0);
+        const  header = read();
+        size_t length;
+
+        if (0xa0 <= header && header <= 0xbf) {
+            length = header & 0x1f;
+        } else {
+            switch (header) {
+            case Format.RAW16:
+                canRead(ushort.sizeof);
+                length = load16To!size_t(read(ushort.sizeof));
+                break;
+            case Format.RAW32:
+                canRead(uint.sizeof);
+                length = load32To!size_t(read(uint.sizeof));
+                break;
+            case Format.NIL:
+                break;
+            default:
+                rollback(0);
+            }
+        }
+
+        return length;
+    }
+
+
+    /**
+     * Deserializes nil object and assigns to $(D_PARAM value).
+     *
+     * Params:
+     *  value = the reference of value to assign.
+     *
+     * Returns:
+     *  this to method chain.
+     *
+     * Throws:
+     *  UnpackException when doesn't read from buffer or precision loss occurs and
+     *  InvalidTypeException when $(D_PARAM T) type doesn't match serialized type.
+     */
+    DUnpack unpackNil(T)(ref T value)
+    {
+        canRead(Offset, 0);
+        const header = read();
+
+        if (header == Format.NIL)
+            value = null;
+        else
+            rollback(0);
+
+        return this;
+    }
+
+
+  private:
+    /*
+     * Reading test to buffer.
+     *
+     * Params:
+     *  size   = the size to read.
+     *  offset = the offset to subtract when doesn't read from buffer.
+     *
+     * Throws:
+     *  UnpackException when doesn't read from buffer.
+     */
+    void canRead(in size_t size, in size_t offset = 1)
+    {
+        if (used_ - offset_ < size) {
+            if (offset)
+                offset_ -= offset;
+
+            throw new UnpackException("Insufficient buffer");
+        }
+    }
+
+
+    /*
+     * Reads value from buffer and advances offset.
+     */
+    ubyte read()
+    {
+        return buffer_[offset_++];
+    }
+
+
+    /*
+     * Reads value from buffer and advances offset.
+     */
+    ubyte[] read(in size_t size)
+    {
+        auto result = buffer_[offset_..offset_ + size];
+
+        offset_ += size;
+
+        return result;
+    }
+
+
+    /*
+     * Rollbacks offset and throws exception.
+     */
+    void rollback(in size_t size)
+    {
+        offset_ -= size + Offset;
+        onInvalidType();
+    }
+}
+
+
+unittest
+{
+    { // unique
+        mixin DefinePacker;
+
+        Tuple!(bool, bool) result, test = tuple(true, false);
+
+        packer.pack(test);
+
+        auto unpacker = DUnpack(packer.buffer.data);
+        unpacker.unpack(result);
+
+        assert(test == result);
+    }
+    { // uint *
+        mixin DefinePacker;
+
+        Tuple!(ubyte, ushort, uint, ulong) result,
+            test = tuple(cast(ubyte)ubyte.max, cast(ushort)ushort.max,
+                         cast(uint)uint.max,   cast(ulong)ulong.max);
+
+        packer.pack(test);
+
+        auto unpacker = DUnpack(packer.buffer.data);
+        unpacker.unpack(result);
+
+        assert(test == result);
+    }
+    { // int *
+        mixin DefinePacker;
+
+        Tuple!(byte, short, int, long) result,
+            test = tuple(cast(byte)byte.min, cast(short)short.min,
+                         cast(int)int.min,   cast(long)long.min);
+
+        packer.pack(test);
+
+        auto unpacker = DUnpack(packer.buffer.data);
+        unpacker.unpack(result);
+
+        assert(test == result);
+    }
+    { // floating point
+        mixin DefinePacker;
+
+        static if (real.sizeof == double.sizeof)
+            Tuple!(float, double, double) result,
+                test = tuple(cast(float)float.min, cast(double)double.max, cast(real)real.min);
+        else
+            Tuple!(float, double, real) result,
+                test = tuple(cast(float)float.min, cast(double)double.max, cast(real)real.min);
+
+        packer.pack(test);
+
+        auto unpacker = DUnpack(packer.buffer.data);
+        unpacker.unpack(result);
+
+        assert(test == result);
+    }
+    { // container
+        mixin DefinePacker;
+
+        Tuple!(ulong[], double[uint], string, bool[2]) result,
+            test = tuple([1UL, 2], [3U:4.0, 5:6.0, 7:8.0],
+                         "MessagePack is nice!", [true, false]);
+
+        packer.pack(test);
+
+        auto unpacker = DUnpack(packer.buffer.data);
+        unpacker.unpack(result);
+
+        assert(test == result);        
+    }
+    { // user defined
+        {
+            static struct S
+            {
+                uint num;
+
+                void mp_pack(P)(ref P p) const { p.packArray(1); p.pack(num); }
+                void mp_unpack(ref DUnpack u)
+                { 
+                    assert(u.unpackArray == 1);
+                    u.unpack(num);
+                }
+            }
+
+            mixin DefinePacker; S result, test = S(uint.max);
+
+            packer.pack(test);
+
+            auto unpacker = DUnpack(packer.buffer.data);
+            unpacker.unpack(result);
+
+            assert(test.num == result.num);        
+        }
+        {
+            static class C
+            {
+                uint num;
+
+                this(uint n) { num = n; }
+
+                void mp_pack(P)(ref P p) const { p.packArray(1); p.pack(num - 1); }
+                void mp_unpack(ref DUnpack u)
+                {
+                    assert(u.unpackArray == 1);
+                    u.unpack(num);
+                }
+            }
+
+            mixin DefinePacker; C result, test = new C(ushort.max);
+
+            packer.pack(test);
+
+            auto unpacker = DUnpack(packer.buffer.data);
+            unpacker.unpack(result, ushort.max);
+
+            assert(test.num == result.num + 1);
+        }
     }
 }
 
@@ -541,7 +1217,7 @@ struct Unpacker
                         callbackBool(obj, false);
                         goto Lpush;
                     default:
-                        throw new UnpackException("Unknown format");
+                        onUnknownType();
                     }
 
                     cur++;
@@ -639,7 +1315,7 @@ struct Unpacker
                     goto Lagain;
                 case State.HEADER:
                     break;
-                }      
+                }
             }
 
           Lpush:
@@ -908,4 +1584,22 @@ unittest
     callbackBool(object, true);
     assert(object.type        == mp_Type.BOOLEAN);
     assert(object.via.boolean == true);
+}
+
+
+/*
+ * A callback for type-mismatched error in deserialization process.
+ */
+void onInvalidType()
+{
+    throw new InvalidTypeException("Attempt to unpack with non-compatible type");
+}
+
+
+/*
+ * A callback for finding unknown-format in deserialization process.
+ */
+void onUnknownType()
+{
+    throw new UnpackException("Unknown type");
 }

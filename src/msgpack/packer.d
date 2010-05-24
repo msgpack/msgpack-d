@@ -11,11 +11,10 @@ module msgpack.packer;
 
 import std.range;
 import std.traits;
-import std.typetuple;
 
 import msgpack.common;
 
-version(unittest) import std.c.string, std.typecons, msgpack.buffer;
+version(unittest) import std.c.string, std.typecons, std.typetuple, msgpack.buffer;
 
 
 @trusted:
@@ -883,24 +882,4 @@ unittest
             assert(memcmp(&buffer.data[2], &test.num, ushort.sizeof) == 0);
         }
     }
-}
-
-
-private:
-
-
-template isByte(T)
-{
-    enum isByte = staticIndexOf!(Unqual!(T), byte, ubyte) >= 0;
-}
-
-
-unittest
-{
-    static assert(isByte!(byte));
-    static assert(isByte!(ubyte));
-    static assert(!isByte!(short));
-    static assert(!isByte!(ulong));
-    static assert(!isByte!(char));
-    static assert(!isByte!(string));
 }

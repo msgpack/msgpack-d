@@ -147,6 +147,27 @@ static if (real.sizeof == 16) {
 }
 
 
+/**
+ * Detects whether $(D_PARAM T) is a built-in byte type.
+ */
+template isByte(T)
+{
+    enum isByte = staticIndexOf!(Unqual!(T), byte, ubyte) >= 0;
+}
+
+
+unittest
+{
+    static assert(isByte!(byte));
+    static assert(isByte!(const(byte)));
+    static assert(isByte!(ubyte));
+    static assert(isByte!(immutable(ubyte)));
+    static assert(!isByte!(short));
+    static assert(!isByte!(char));
+    static assert(!isByte!(string));
+}
+
+
 version (LittleEndian)
 {
     /**
