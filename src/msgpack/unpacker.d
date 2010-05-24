@@ -615,6 +615,24 @@ struct Unpacker(bool isStream : false)
 
 
     /**
+     * Deserializes $(D_PARAM Types) objects and assigns to each object.
+     *
+     * Params:
+     *  objects = the references of objects to assign.
+     *
+     * Returns:
+     *  this to method chain.
+     */
+    Unpacker unpack(Types...)(ref Types objects) if (Types.length > 1)
+    {
+        foreach (i, T; Types)
+            unpack!(T)(objects[i]);
+
+        return this;
+    }
+
+
+    /**
      * Deserializes type-information of container.
      *
      * Returns:
@@ -733,6 +751,48 @@ struct Unpacker(bool isStream : false)
             rollback(0);
 
         return this;
+    }
+
+
+    /**
+     * Scans an entire buffer and converts each objects.
+     *
+     * This method is used for unpacking record-like objects.
+     *
+     * Example:
+     * -----
+     * // serialized data is "[1, 2][3, 4][5, 6][...".
+     * auto unpacker = unpacker!(false)(serializedData);
+     * foreach (n, d; &unpacker.scan!(int, int))  // equals "foreach (int n, int d; unpacker)"
+     *     writeln(n, d); // 1st loop "1, 2", 2nd loop "3, 4"...
+     * -----
+     */
+    int scan(Types...)(scope int delegate(ref Types) dg)
+    {
+        return opApply!(Types)(delegate int(ref Types objects) { return dg(objects); });
+    }
+
+
+    /// ditto
+    int opApply(Types...)(scope int delegate(ref Types) dg)
+    {
+        int result;
+
+        while (used_ - offset_) {
+            auto length = unpackArray();
+            if (length != Types.length)
+                rollback(length < 16 ? 0 : length < 65536 ? ushort.sizeof : uint.sizeof);
+
+            Types objects;
+            foreach (i, T; Types)
+                unpack!(T)(objects[i]);
+
+            result = dg(objects);
+            if (result)
+                return result;
+        }
+
+        return result;
     }
 
 
@@ -862,7 +922,7 @@ unittest
         auto unpacker = unpacker!(false)(packer.buffer.data);
         unpacker.unpack(result);
 
-        assert(test == result);        
+        assert(test == result);
     }
     { // user defined
         {
@@ -885,7 +945,7 @@ unittest
             auto unpacker = unpacker!(false)(packer.buffer.data);
             unpacker.unpack(result);
 
-            assert(test.num == result.num);        
+            assert(test.num == result.num);
         }
         {
             static class C
@@ -910,6 +970,37 @@ unittest
             unpacker.unpack(result, ushort.max);
 
             assert(test.num == result.num + 1);
+        }
+    }
+    { // variadic
+        mixin DefinePacker;
+
+        Tuple!(uint, long, double) test = tuple(uint.max, long.min, double.max);
+
+        packer.pack(test);
+
+        auto unpacker = unpacker!(false)(packer.buffer.data);
+
+        uint u; long l; double d;
+
+        auto size = unpacker.unpackArray();
+        unpacker.unpack(u, l, d);
+
+        assert(test == tuple(u, l, d));
+    }
+    { // scan / opApply
+        ubyte[] data;
+
+        foreach (i; 0..2) {
+            mixin DefinePacker;
+            packer.pack(tuple(1, 0.5, "Hi!"));
+            data ~= packer.buffer.data;
+        }
+
+        foreach (n, d, s; &unpacker!(false)(data).scan!(int, double, string)) {
+            assert(n == 1);
+            assert(d == 0.5);
+            assert(s == "Hi!");
         }
     }
 }
@@ -1470,9 +1561,8 @@ Unpacker!(isStream) unpacker(bool isStream = true)(in ubyte[] target, in size_t 
 unittest
 {
     // serialize
-    SimpleBuffer buffer;
-    auto packer = packer(&buffer);
-    enum Size   = mp_Type.max + 1;
+    mixin DefinePacker;
+    enum Size = mp_Type.max + 1;
 
     packer.packArray(Size);
     packer.packNil().packTrue().pack(1).pack(-2).pack("Hi!");
@@ -1486,7 +1576,9 @@ unittest
     foreach (unused; 0..2) {
         uint i;
 
-        foreach (obj; unpacked) i++;
+        foreach (obj; unpacked)
+            i++;
+
         assert(i == Size);
     }
 
