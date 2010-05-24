@@ -3,6 +3,10 @@
 /**
  * MessagePack for D, deserializing routine
  *
+ * ToDo:
+ *  Currently, Unpacker uses internal buffer.
+ *  Uses stream if Phobos will have truly stream module.
+ *
  * Copyright: Copyright Masahiro Nakagawa 2010.
  * License:   <a href = "http://www.boost.org/LICENSE_1_0.txt">Boost License 1.0</a>.
  * Authors:   Masahiro Nakagawa
@@ -35,65 +39,12 @@ class UnpackException : Exception
 
 
 /**
- * $(D Unpacked) is a $(D InputRange) wrapper for deserialization result.
- */
-struct Unpacked
-{
-    mp_Object object;
-
-    alias object this;
-
-
-    /**
-     * Constructs a $(D Unpacked) with argument.
-     *
-     * Params:
-     *  object = a deserialized object.
-     */
-    this(ref mp_Object object)
-    {
-        this.object = object;
-    }
-
-
-    /**
-     * Range primitive operation that checks iteration state.
-     *
-     * Returns:
-     *  true if there are no more elements to be iterated.
-     */
-    @property nothrow bool empty() const  // std.array.empty isn't nothrow function
-    {
-        return (object.type == mp_Type.ARRAY) && !object.via.array.length;
-    }
-
-
-    /**
-     * Range primitive operation that returns the currently iterated element.
-     *
-     * Returns:
-     *  the deserialized $(D mp_Object).
-     */
-    @property ref mp_Object front()
-    {
-        return object.via.array.front;
-    }
-
-
-    /**
-     * Range primitive operation that advances the range to its next element.
-     */
-    void popFront()
-    {
-        object.via.array.popFront();
-    }
-}
-
-
-/*
- * Internal buffer and operations for Unpacker.
+ * Internal buffer and operations for Unpacker
  *
- * buffer image:
+ * Following Unpackers mixin this template.
+ *
+ * -----
+ * //buffer image:
  * +-------------------------------------------+
  * | [object] | [obj | unparsed... | unused... |
  * +-------------------------------------------+
@@ -101,6 +52,7 @@ struct Unpacked
  *                   ^ current
  *                                 ^ used
  *                                             ^ buffer.length
+ * -----
  */
 mixin template InternalBuffer()
 {
@@ -263,11 +215,34 @@ mixin template InternalBuffer()
 
 
 /**
- * $(D DUnpacker) is a $(D MessagePack) direct conversion deserializer.
+ * This $(D Unpacker) is a $(D MessagePack) direct conversion deserializer
+ *
+ * Example:
+ * -----
+ * // serializedData is [10, 0.1, false]
+ * auto unpacker = unpacker!(false)(serializedData);
+ *
+ * // manually
+ * uint   n;
+ * double d;
+ * bool   b;
+ *
+ * auto size = unpacker.unpackArray();
+ * if (size != 3)
+ *     throw new Exception("Size is mismatched!");
+ *
+ * unpacker.unpack(n).unpack(d).unpack(b);
+ *
+ * // or
+ * Tuple!(uint, double, true) record;
+ * unpacker.unpack(record);  // record is [10, 0.1, false]
+ * -----
  */
-struct DUnpack
+struct Unpacker(bool isStream : false)
 {
   private:
+    alias .Unpacker!(isStream) Unpacker;
+
     enum Offset = 1;
 
     mixin InternalBuffer;
@@ -314,7 +289,7 @@ struct DUnpack
      *  UnpackException when doesn't read from buffer or precision loss occurs and
      *  InvalidTypeException when $(D_PARAM T) type doesn't match serialized type.
      */
-    DUnpack unpack(T)(ref T value) if (is(Unqual!T == bool))
+    Unpacker unpack(T)(ref T value) if (is(Unqual!T == bool))
     {
         canRead(Offset, 0);
         const header = read();
@@ -335,8 +310,7 @@ struct DUnpack
 
 
     /// ditto
-    //DUnpack unpack(T)(ref T value) if (__traits(isUnsigned, Unqual!T))
-    DUnpack unpack(T)(ref T value) if (isUnsigned!(Unqual!T))
+    Unpacker unpack(T)(ref T value) if (isUnsigned!(Unqual!T))
     {
         canRead(Offset, 0);
         const header = read();
@@ -380,8 +354,7 @@ struct DUnpack
 
 
     /// ditto
-    //DUnpack unpack(T)(ref T value) if (!__traits(isUnsigned, Unqual!T) &&
-    DUnpack unpack(T)(ref T value) if (isSigned!(Unqual!T) && !isFloatingPoint!(Unqual!T))
+    Unpacker unpack(T)(ref T value) if (isSigned!(Unqual!T) && !isFloatingPoint!(Unqual!T))
     {
         canRead(Offset, 0);
         const header = read();
@@ -453,7 +426,7 @@ struct DUnpack
 
 
     /// ditto
-    DUnpack unpack(T)(ref T value) if (isFloatingPoint!(Unqual!T))
+    Unpacker unpack(T)(ref T value) if (isFloatingPoint!(Unqual!T))
     {
         canRead(Offset, 0);
         const header = read();
@@ -524,7 +497,7 @@ struct DUnpack
      *  UnpackException when doesn't read from buffer or precision loss occurs and
      *  InvalidTypeException when $(D_PARAM T) type doesn't match serialized type.
      */
-    DUnpack unpack(T)(ref T array) if (isArray!T)
+    Unpacker unpack(T)(ref T array) if (isArray!T)
     {
         alias typeof(T.init[0]) U;
 
@@ -563,7 +536,7 @@ struct DUnpack
 
 
     /// ditto
-    DUnpack unpack(T)(ref T array) if (isAssociativeArray!T)
+    Unpacker unpack(T)(ref T array) if (isAssociativeArray!T)
     {
         alias typeof(T.init.keys[0])   K;
         alias typeof(T.init.values[0]) V;
@@ -601,7 +574,7 @@ struct DUnpack
      * Returns:
      *  this to method chain.
      */
-    DUnpack unpack(T, Args...)(ref T object, Args args) if (is(Unqual!T == class))
+    Unpacker unpack(T, Args...)(ref T object, Args args) if (is(Unqual!T == class))
     {
         static if (!__traits(compiles, { T t; t.mp_unpack(this); }))
             static assert(false, T.stringof ~ " is not a MessagePackable object");
@@ -616,7 +589,7 @@ struct DUnpack
 
 
     /// ditto
-    DUnpack unpack(T)(ref T object) if (is(Unqual!T == struct))
+    Unpacker unpack(T)(ref T object) if (is(Unqual!T == struct))
     {
         static if (__traits(compiles, { T t; t.mp_unpack(this); })) {
             object.mp_unpack(this);
@@ -744,7 +717,7 @@ struct DUnpack
      *  UnpackException when doesn't read from buffer or precision loss occurs and
      *  InvalidTypeException when $(D_PARAM T) type doesn't match serialized type.
      */
-    DUnpack unpackNil(T)(ref T value)
+    Unpacker unpackNil(T)(ref T value)
     {
         canRead(Offset, 0);
         const header = read();
@@ -822,7 +795,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = DUnpack(packer.buffer.data);
+        auto unpacker = unpacker!(false)(packer.buffer.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -836,7 +809,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = DUnpack(packer.buffer.data);
+        auto unpacker = unpacker!(false)(packer.buffer.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -850,7 +823,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = DUnpack(packer.buffer.data);
+        auto unpacker = unpacker!(false)(packer.buffer.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -867,7 +840,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = DUnpack(packer.buffer.data);
+        auto unpacker = unpacker!(false)(packer.buffer.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -881,7 +854,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = DUnpack(packer.buffer.data);
+        auto unpacker = unpacker!(false)(packer.buffer.data);
         unpacker.unpack(result);
 
         assert(test == result);        
@@ -893,7 +866,7 @@ unittest
                 uint num;
 
                 void mp_pack(P)(ref P p) const { p.packArray(1); p.pack(num); }
-                void mp_unpack(ref DUnpack u)
+                void mp_unpack(ref Unpacker!(false) u)
                 { 
                     assert(u.unpackArray == 1);
                     u.unpack(num);
@@ -904,7 +877,7 @@ unittest
 
             packer.pack(test);
 
-            auto unpacker = DUnpack(packer.buffer.data);
+            auto unpacker = unpacker!(false)(packer.buffer.data);
             unpacker.unpack(result);
 
             assert(test.num == result.num);        
@@ -917,7 +890,7 @@ unittest
                 this(uint n) { num = n; }
 
                 void mp_pack(P)(ref P p) const { p.packArray(1); p.pack(num - 1); }
-                void mp_unpack(ref DUnpack u)
+                void mp_unpack(ref Unpacker!(false) u)
                 {
                     assert(u.unpackArray == 1);
                     u.unpack(num);
@@ -928,11 +901,67 @@ unittest
 
             packer.pack(test);
 
-            auto unpacker = DUnpack(packer.buffer.data);
+            auto unpacker = unpacker!(false)(packer.buffer.data);
             unpacker.unpack(result, ushort.max);
 
             assert(test.num == result.num + 1);
         }
+    }
+}
+
+
+/**
+ * $(D Unpacked) is a $(D InputRange) wrapper for stream deserialization result
+ */
+struct Unpacked
+{
+    mp_Object object;
+
+    alias object this;
+
+
+    /**
+     * Constructs a $(D Unpacked) with argument.
+     *
+     * Params:
+     *  object = a deserialized object.
+     */
+    this(ref mp_Object object)
+    {
+        this.object = object;
+    }
+
+
+    /**
+     * Range primitive operation that checks iteration state.
+     *
+     * Returns:
+     *  true if there are no more elements to be iterated.
+     */
+    @property nothrow bool empty() const  // std.array.empty isn't nothrow function
+    {
+        return (object.type == mp_Type.ARRAY) && !object.via.array.length;
+    }
+
+
+    /**
+     * Range primitive operation that returns the currently iterated element.
+     *
+     * Returns:
+     *  the deserialized $(D mp_Object).
+     */
+    @property ref mp_Object front()
+    {
+        return object.via.array.front;
+    }
+
+
+    /**
+     * Range primitive operation that advances the range to its next element.
+     */
+    void popFront()
+    {
+        object.via.array.popFront();
     }
 }
 
@@ -957,7 +986,7 @@ unittest
  *     throw new Exception("Message is too large");
  * -----
  */
-struct Unpacker
+struct Unpacker(bool isStream : true)
 {
   private:
     /*
@@ -1421,8 +1450,9 @@ struct Unpacker
  *
  * Returns:
  *  a $(D Unpacker) object instantiated and initialized according to the arguments.
+ *  Stream deserializer if $(D_PARAM isStream) is true, otherwise direct conversion deserializer.
  */
-Unpacker unpacker(in ubyte[] target, in size_t bufferSize = 8192)
+Unpacker!(isStream) unpacker(bool isStream = true)(in ubyte[] target, in size_t bufferSize = 8192)
 {
     return typeof(return)(target, bufferSize);
 }

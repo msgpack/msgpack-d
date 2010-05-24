@@ -421,40 +421,6 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
     }
 
 
-    /**
-     * Serializes $(D_KEYWORD real) type and writes to buffer.
-     *
-     * This method is marked @system because $(D_KEYWORD real) type is D only!
-     * MessagePack doesn't define $(D_KEYWORD real) type format.
-     * Don't use this method if you communicate with other languages.
-     *
-     * Transfer pack!(double) if $(D_KEYWORD real) type on your environment equals $(D_KEYWORD double) type.
-     *
-     * Params:
-     *  value = the content to serialize.
-     *
-     * Returns:
-     *  this to method chain.
-     */
-    @system ref Packer pack(T)(in T value) if (is(Unqual!T == real))
-    {
-        static if (real.sizeof > double.sizeof) {
-            store_[0..2]   = [Format.REAL, real.sizeof];
-            const temp     = _r(value);
-            const fraction = convertEndianTo!64(temp.fraction);
-            const exponent = convertEndianTo!ES(temp.exponent);
-
-            *cast(Unqual!(typeof(fraction))*)&store_[Offset + 1]                   = fraction;
-            *cast(Unqual!(typeof(exponent))*)&store_[Offset + 1 + fraction.sizeof] = exponent;
-            buffer_.put(store_[0..$]);
-        } else {  // Non-x86 CPUs, real type equals double type.
-            pack(cast(double)value);
-        }
-
-        return this;
-    }
-
-
     /// ditto
     ref Packer pack(T)(in T array) if (isArray!(T))
     {
@@ -496,13 +462,47 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
 
 
     /**
+     * Serializes $(D_KEYWORD real) type and writes to buffer.
+     *
+     * This method is marked @system because $(D_KEYWORD real) type is D only!
+     * MessagePack doesn't define $(D_KEYWORD real) type format.
+     * Don't use this method if you communicate with other languages.
+     *
+     * Transfer pack!(double) if $(D_KEYWORD real) type on your environment equals $(D_KEYWORD double) type.
+     *
+     * Params:
+     *  value = the content to serialize.
+     *
+     * Returns:
+     *  this to method chain.
+     */
+    @system ref Packer pack(T)(in T value) if (is(Unqual!T == real))
+    {
+        static if (real.sizeof > double.sizeof) {
+            store_[0..2]   = [Format.REAL, real.sizeof];
+            const temp     = _r(value);
+            const fraction = convertEndianTo!64(temp.fraction);
+            const exponent = convertEndianTo!ES(temp.exponent);
+
+            *cast(Unqual!(typeof(fraction))*)&store_[Offset + 1]                   = fraction;
+            *cast(Unqual!(typeof(exponent))*)&store_[Offset + 1 + fraction.sizeof] = exponent;
+            buffer_.put(store_[0..$]);
+        } else {  // Non-x86 CPUs, real type equals double type.
+            pack(cast(double)value);
+        }
+
+        return this;
+    }
+
+
+    /**
      * Serializes $(D_PARAM object) and writes to buffer.
      *
      * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D mp_pack) method.
      * $(D mp_pack) signature is:
-    -----
-    void mp_pack(Packer)(ref Packer packer) const
-    -----
+     * -----
+     * void mp_pack(Packer)(ref Packer packer) const
+     * -----
      * Assumes $(D std.typecons.Tuple) if $(D_KEYWORD struct) doens't implement $(D mp_pack).
      *
      * Params:
@@ -514,7 +514,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
     ref Packer pack(T)(in T object) if (is(Unqual!T == class))
     {
         static if (!__traits(compiles, { T t; t.mp_pack(this); }))
-            static assert(false, T.stringof ~ " is not MessagePackable object");
+            static assert(false, T.stringof ~ " is not a MessagePackable object");
 
         object.mp_pack(this);
 

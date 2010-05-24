@@ -240,9 +240,9 @@ struct mp_Object
      *
      * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D mp_unpack) method.
      * $(D mp_unpack) signature is:
-    -----
-    void mp_unpack(mp_Object object)
-    -----
+     * -----
+     * void mp_unpack(mp_Object object)
+     * -----
      * Assumes $(D std.typecons.Tuple) if $(D_KEYWORD struct) doens't implement $(D mp_unpack).
      *
      * Params:
@@ -254,7 +254,7 @@ struct mp_Object
     @property T as(T, Args...)(Args args) if (is(T == class))
     {
         static if (!__traits(compiles, { T t; t.mp_unpack(this); }))
-            static assert(false, T.stringof ~ " is not MessagePackable object");
+            static assert(false, T.stringof ~ " is not a MessagePackable object");
 
         if (type == mp_Type.NIL)
             return null;
