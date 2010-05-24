@@ -39,7 +39,7 @@ class UnpackException : Exception
 
 
 /**
- * Internal buffer and operations for Unpacker
+ * Internal buffer and related operations for Unpacker
  *
  * Following Unpackers mixin this template.
  *
@@ -177,7 +177,7 @@ mixin template InternalBuffer()
 
     /**
      * Returns:
-     *  the parsed size.
+     *  the parsed size of buffer.
      */
     @property nothrow size_t parsedSize() const
     {
@@ -217,7 +217,7 @@ mixin template InternalBuffer()
 /**
  * This $(D Unpacker) is a $(D MessagePack) direct-conversion deserializer
  *
- * This implementation 
+ * This implementation is suitable for fixed data.
  *
  * Example:
  * -----
@@ -504,13 +504,13 @@ struct Unpacker(bool isStream : false)
         alias typeof(T.init[0]) U;
 
         // Raw bytes
-        static if (isByte!(U) || isSomeChar!(U)) {
+        static if (isByte!U || isSomeChar!U) {
             auto length = unpackRaw();
             auto offset = (length < 32 ? 0 : length < 65536 ? ushort.sizeof : uint.sizeof);
             if (length == 0)
                 return this;
 
-            static if (isStaticArray!(T)) {
+            static if (isStaticArray!T) {
                 if (length != array.length)
                     rollback(offset);
             }
@@ -525,7 +525,7 @@ struct Unpacker(bool isStream : false)
             if (length == 0)
                 return this;
 
-            static if (isStaticArray!(T)) {
+            static if (isStaticArray!T) {
                 if (length != array.length)
                     rollback(length < 16 ? 0 : length < 65536 ? ushort.sizeof : uint.sizeof);
             } else {
@@ -980,7 +980,11 @@ struct Unpacked
  * -----
  * ...
  * auto unpacker = unpacker(serializedData);
- * 
+ * ...
+ *
+ * // appends new data to buffer if pre execute() call didn't finish deserialization.
+ * unpacker.feed(newSerializedData);
+ *
  * while(unpacker.execute()) {
  *     foreach (obj; unpacker.purge()) {
  *         // do stuff

@@ -152,7 +152,7 @@ static if (real.sizeof == 16) {
  */
 template isByte(T)
 {
-    enum isByte = staticIndexOf!(Unqual!(T), byte, ubyte) >= 0;
+    enum isByte = staticIndexOf!(Unqual!T, byte, ubyte) >= 0;
 }
 
 

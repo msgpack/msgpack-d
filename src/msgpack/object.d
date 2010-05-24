@@ -163,7 +163,7 @@ struct mp_Object
 
 
     /// ditto
-    @property T as(T)() if (isIntegral!(T))
+    @property T as(T)() if (isIntegral!T)
     {
         if (type == mp_Type.POSITIVE_INTEGER)
             return cast(T)via.uinteger;
@@ -178,7 +178,7 @@ struct mp_Object
 
 
     /// ditto
-    @property T as(T)() if (isFloatingPoint!(T))
+    @property T as(T)() if (isFloatingPoint!T)
     {
         if (type != mp_Type.FLOAT)
             onCastError();
@@ -188,12 +188,12 @@ struct mp_Object
 
 
     /// ditto
-    @property T as(T)() if (isArray!(T))
+    @property T as(T)() if (isArray!T)
     {
         if (type == mp_Type.NIL)
             return null;
 
-        static if (isSomeString!(T)) {
+        static if (isSomeString!T) {
             if (type != mp_Type.RAW)
                 onCastError();
 
@@ -215,7 +215,7 @@ struct mp_Object
 
 
     /// ditto
-    @property T as(T)() if (isAssociativeArray!(T))
+    @property T as(T)() if (isAssociativeArray!T)
     {
         alias typeof(T.init.keys[0])   K;
         alias typeof(T.init.values[0]) V;

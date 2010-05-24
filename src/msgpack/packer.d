@@ -422,7 +422,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
 
 
     /// ditto
-    ref Packer pack(T)(in T array) if (isArray!(T))
+    ref Packer pack(T)(in T array) if (isArray!T)
     {
         alias typeof(T.init[0]) U;
 
@@ -446,7 +446,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
 
 
     /// ditto
-    ref Packer pack(T)(in T array) if (isAssociativeArray!(T))
+    ref Packer pack(T)(in T array) if (isAssociativeArray!T)
     {
         if (array is null)
             return packNil();
