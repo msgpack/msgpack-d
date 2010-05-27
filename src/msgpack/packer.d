@@ -67,9 +67,16 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
      * Returns:
      *  the buffer.
      */
-    @property nothrow Buffer buffer()
-    {
-        return buffer_;
+    static if (is(Unqual!Buffer == struct)) {
+        @property nothrow ref Buffer buffer()
+        {
+            return buffer_;
+        }
+    } else {
+        @property nothrow Buffer buffer()
+        {
+            return buffer_;
+        }
     }
 
 
