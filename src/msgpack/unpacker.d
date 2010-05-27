@@ -1565,7 +1565,6 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
  *  a $(D Unpacker) object instantiated and initialized according to the arguments.
  *  Stream deserializer if $(D_PARAM isStream) is true, otherwise direct-conversion deserializer.
  */
-//Unpacker!(isStream) unpacker(bool isStream = true)(in ubyte[] target, in size_t bufferSize = 8192)
 Unpacker!(Type) unpacker(UnpackerType Type = UnpackerType.STREAM)(in ubyte[] target, in size_t bufferSize = 8192)
 {
     return typeof(return)(target, bufferSize);
