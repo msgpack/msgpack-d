@@ -215,6 +215,15 @@ mixin template InternalBuffer()
 
 
 /**
+ * Implementation types for template specialization
+ */
+enum UnpackerType
+{
+    DIRECT, STREAM
+}
+
+
+/**
  * This $(D Unpacker) is a $(D MessagePack) direct-conversion deserializer
  *
  * This implementation is suitable for fixed data.
@@ -222,7 +231,7 @@ mixin template InternalBuffer()
  * Example:
  * -----
  * // serializedData is [10, 0.1, false]
- * auto unpacker = unpacker!(false)(serializedData);
+ * auto unpacker = unpacker!(UnpackerType.DIRECT)(serializedData);
  *
  * // manually
  * uint   n;
@@ -240,7 +249,7 @@ mixin template InternalBuffer()
  * unpacker.unpack(record);  // record is [10, 0.1, false]
  * -----
  */
-struct Unpacker(bool isStream : false)
+struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
 {
   private:
     enum Offset = 1;
@@ -771,7 +780,7 @@ struct Unpacker(bool isStream : false)
      * Example:
      * -----
      * // serialized data is "[1, 2][3, 4][5, 6][...".
-     * auto unpacker = unpacker!(false)(serializedData);
+     * auto unpacker = unpacker!(UnpackerType.DIRECT)(serializedData);
      * foreach (n, d; &unpacker.scan!(int, int))  // == "foreach (int n, int d; unpacker)"
      *     writeln(n, d); // 1st loop "1, 2", 2nd loop "3, 4"...
      * -----
@@ -869,7 +878,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(false)(packer.buffer.data);
+        auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -883,7 +892,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(false)(packer.buffer.data);
+        auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -897,7 +906,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(false)(packer.buffer.data);
+        auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -914,7 +923,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(false)(packer.buffer.data);
+        auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -928,7 +937,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(false)(packer.buffer.data);
+        auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -940,7 +949,7 @@ unittest
                 uint num;
 
                 void mp_pack(P)(ref P p) const { p.packArray(1); p.pack(num); }
-                void mp_unpack(ref Unpacker!(false) u)
+                void mp_unpack(ref Unpacker!(UnpackerType.DIRECT) u)
                 { 
                     assert(u.unpackArray == 1);
                     u.unpack(num);
@@ -951,7 +960,7 @@ unittest
 
             packer.pack(test);
 
-            auto unpacker = unpacker!(false)(packer.buffer.data);
+            auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
             unpacker.unpack(result);
 
             assert(test.num == result.num);
@@ -964,7 +973,7 @@ unittest
                 this(uint n) { num = n; }
 
                 void mp_pack(P)(ref P p) const { p.packArray(1); p.pack(num - 1); }
-                void mp_unpack(ref Unpacker!(false) u)
+                void mp_unpack(ref Unpacker!(UnpackerType.DIRECT) u)
                 {
                     assert(u.unpackArray == 1);
                     u.unpack(num);
@@ -975,7 +984,7 @@ unittest
 
             packer.pack(test);
 
-            auto unpacker = unpacker!(false)(packer.buffer.data);
+            auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
             unpacker.unpack(result, ushort.max);
 
             assert(test.num == result.num + 1);
@@ -988,7 +997,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(false)(packer.buffer.data);
+        auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
 
         uint u; long l; double d;
 
@@ -1006,7 +1015,7 @@ unittest
             data ~= packer.buffer.data;
         }
 
-        foreach (n, d, s; &unpacker!(false)(data).scan!(int, double, string)) {
+        foreach (n, d, s; &unpacker!(UnpackerType.DIRECT)(data).scan!(int, double, string)) {
             assert(n == 1);
             assert(d == 0.5);
             assert(s == "Hi!");
@@ -1095,7 +1104,7 @@ struct Unpacked
  *     throw new Exception("Message is too large");
  * -----
  */
-struct Unpacker(bool isStream : true)
+struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
 {
   private:
     /*
@@ -1556,7 +1565,8 @@ struct Unpacker(bool isStream : true)
  *  a $(D Unpacker) object instantiated and initialized according to the arguments.
  *  Stream deserializer if $(D_PARAM isStream) is true, otherwise direct-conversion deserializer.
  */
-Unpacker!(isStream) unpacker(bool isStream = true)(in ubyte[] target, in size_t bufferSize = 8192)
+//Unpacker!(isStream) unpacker(bool isStream = true)(in ubyte[] target, in size_t bufferSize = 8192)
+Unpacker!(Type) unpacker(UnpackerType Type = UnpackerType.STREAM)(in ubyte[] target, in size_t bufferSize = 8192)
 {
     return typeof(return)(target, bufferSize);
 }

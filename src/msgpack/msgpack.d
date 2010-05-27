@@ -99,7 +99,7 @@ Unpacked unpack(Tdummy = void)(in ubyte[] buffer)
  */
 void unpack(Args...)(in ubyte[] buffer, ref Args args)
 {
-    auto unpacker = unpacker!(false)(buffer);
+    auto unpacker = unpacker!(UnpackerType.DIRECT)(buffer);
 
     static if (Args.length == 1) {
         unpacker.unpack(args[0]);

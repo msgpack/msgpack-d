@@ -82,7 +82,7 @@ mixin template MessagePackable(Members...)
          * Throws:
          *  InvalidTypeException if deserialized object size is mismatched.
          */
-        void mp_unpack(ref Unpacker!(false) unpacker)
+        void mp_unpack(ref Unpacker!(UnpackerType.DIRECT) unpacker)
         {
             auto length = unpacker.unpackArray();
             if (length != this.tupleof.length)
@@ -119,7 +119,7 @@ mixin template MessagePackable(Members...)
         /**
          * Member selecting version of mp_unpack for direct converion deserializer.
          */
-        void mp_unpack(ref Unpacker!(false) unpacker)
+        void mp_unpack(ref Unpacker!(UnpackerType.DIRECT) unpacker)
         {
             auto length = unpacker.unpackArray();
             if (length != Members.length)
@@ -154,7 +154,7 @@ unittest
             assert(result.str == "Hi!");
         }
         { // direct conversion
-            auto unpacker = unpacker!(false)(packer.buffer.data);
+            auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
 
             S result; unpacker.unpack(result);
 
@@ -185,7 +185,7 @@ unittest
             assert(result.num == 10);
         }
         { // direct conversion
-            auto unpacker = unpacker!(false)(packer.buffer.data);
+            auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
 
             C result; unpacker.unpack(result);
 
