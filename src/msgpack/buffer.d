@@ -3,12 +3,12 @@
 /**
  * MessagePack for D, some buffer implementation
  *
- * Buffer list:
+ * Implementation list:
  * $(UL
  *  $(LI SimpleBuffer)
- *  $(LI DeflationBuffer)
  *  $(LI VRefBuffer)
  *  $(LI BinaryFileWriter)
+ *  $(LI DeflationFilter)
  * )
  *
  * Some helper functions avoid $(LINK http://d.puremagic.com/issues/show_bug.cgi?id=3438).
@@ -386,7 +386,7 @@ unittest
 class DeflateFilter(Buffer) if (isInputRange!(Buffer) || isOutputRange!(Buffer, ubyte[]))
 {
   private:
-    enum TempSize = 64;  // for temporary buffer
+    enum TempSize = 128;  // for temporary buffer
 
     bool     doCompress_;
     Buffer   buffer_;  // buffer to input / output
@@ -398,24 +398,29 @@ class DeflateFilter(Buffer) if (isInputRange!(Buffer) || isOutputRange!(Buffer, 
      * Constructs a buffer.
      *
      * Params:
+     *  buffer     = the buffer to output / input
      *  doCompress = filter do compress if true, otherwise do uncompress.
      *  level      = Compression level for deflation.
      *
      * Throws:
      *  $(D ZlibException) if initialization of zlib-stream failed.
      */
-    this(ref Buffer buffer, bool doCompress = true, lazy int level = Z_DEFAULT_COMPRESSION)
+    this(Buffer buffer, bool doCompress = true, lazy int level = Z_DEFAULT_COMPRESSION)
     in
     {
+        static if (!isInputRange!Buffer)
+            assert(doCompress, "inflation requires InputRange");
+        static if (!isOutputRange!(Buffer, ubyte[]))
+            assert(!doCompress, "deflation requires OutputRange");
+
         assert(Z_DEFAULT_COMPRESSION <= level && level <= Z_BEST_COMPRESSION);
     }
     body
     {
-        if (doCompress) {
+        if (doCompress)
             check(deflateInit(&stream_, level));
-        } else {
+        else
             check(inflateInit(&stream_));
-        }
 
         buffer_     = buffer;
         doCompress_ = doCompress;
@@ -453,7 +458,7 @@ class DeflateFilter(Buffer) if (isInputRange!(Buffer) || isOutputRange!(Buffer, 
     }
 
 
-    // for InputRange (This is a ad-hoc implementation, not tested)
+    // for InputRange
 
 
     static if (isInputRange!Buffer) {
@@ -473,36 +478,28 @@ class DeflateFilter(Buffer) if (isInputRange!(Buffer) || isOutputRange!(Buffer, 
          * Range primitive operation that returns the currently iterated element.
          *
          * Returns:
-         *  the inflated $(D buffer).
+         *  the inflated content.
          */
         @property ubyte[] front()
         {
-            int             status = Z_OK;
-            ubyte[]         result;
+            ubyte[]         result, data = buffer_.front;
             ubyte[TempSize] temp;
 
+            // set input
+            stream_.next_in  = data.ptr;
+            stream_.avail_in = data.length;
+
             do {
-                // set input
-                if (stream_.avail_in == 0) {
-                    ubyte[] data = buffer_.front;
-
-                    stream_.next_in  = cast(ubyte*)data.ptr;
-                    stream_.avail_in = data.length;
-                }
-
                 // set output
-                if (stream_.avail_out == 0) {
-                    stream_.next_out  = temp.ptr;
-                    stream_.avail_out = temp.length;
-                }
+                stream_.next_out  = temp.ptr;
+                stream_.avail_out = TempSize;
 
-                status = inflate(&stream_, Z_NO_FLUSH);
-                check(status);
+                check(inflate(&stream_, Z_SYNC_FLUSH));
 
-                result ~= temp[0..stream_.next_out - temp.ptr];
-            } while (status != Z_STREAM_END)
+                result ~= temp[0..TempSize - stream_.avail_out];
+            } while (stream_.avail_in > 0)
 
-                return result;
+            return result;
         }
 
 
@@ -547,65 +544,46 @@ class DeflateFilter(Buffer) if (isInputRange!(Buffer) || isOutputRange!(Buffer, 
             ubyte[]         result;
             ubyte[TempSize] temp;
 
+            // set input
             stream_.next_in  = cast(ubyte*)values.ptr;
             stream_.avail_in = values.length;
 
             do {
+                // set output
                 stream_.next_out  = temp.ptr;
-                stream_.avail_out = temp.length;
+                stream_.avail_out = TempSize;
 
                 check(deflate(&stream_, Z_NO_FLUSH));
 
-                result ~= temp[0..stream_.next_out - temp.ptr];
+                if (TempSize - stream_.avail_out)  // for performance(zlib has internal buffer)
+                    result ~= temp[0..TempSize - stream_.avail_out];
             } while (stream_.avail_in > 0)
 
+            if (result.length)  // avoids function call
                 buffer_.put(result);
         }
-    }
 
 
-    /**
-     * Flushes the zlib-stream.
-     *
-     * Returns:
-     *  the flushed buffer content if inflatie(doCompress is false),
-     *  otherwise null(doCompress is true).
-     */
-    ubyte[] flush()
-    {
-        ubyte[]         result;
-        ubyte[TempSize] temp;
+        /**
+         * Flushes the zlib-stream(deflation only).
+         */
+        void flush()
+        {
+            ubyte[]         result;
+            ubyte[TempSize] temp;
 
-        if (doCompress_) {
             while (true) {
                 stream_.next_out  = temp.ptr;
-                stream_.avail_out = temp.length;
+                stream_.avail_out = TempSize;
 
                 auto status = deflate(&stream_, Z_FINISH);
 
                 switch (status) {
                 case Z_STREAM_END:
-                    buffer_.put(result ~ temp[0..stream_.next_out - temp.ptr]);
-                    return null;
+                    buffer_.put(result ~ temp[0..TempSize - stream_.avail_out]);
+                    return;
                 case Z_OK:
-                    result ~= temp[0..stream_.next_out - temp.ptr];
-                    break;
-                default:
-                    check(status);
-                }
-            }
-        } else {
-            while (true) {
-                stream_.next_out  = temp.ptr;
-                stream_.avail_out = temp.length;
-
-                auto status = inflate(&stream_, Z_FINISH);
-
-                switch (status) {
-                case Z_STREAM_END:
-                    return result ~ temp[0..stream_.next_out - temp.ptr];
-                case Z_OK:
-                    result ~= temp[0..stream_.next_out - temp.ptr];
+                    result ~= temp;
                     break;
                 default:
                     check(status);
@@ -658,16 +636,14 @@ class DeflateFilter(Buffer) if (isInputRange!(Buffer) || isOutputRange!(Buffer, 
  * Helper for $(D DeflateFilter) construction.
  *
  * Params:
+ *  buffer     = the buffer to output / input
  *  doCompress = filter do compress if true, otherwise do uncompress.
  *  level      = Compression level for deflation.
  *
  * Returns:
  *  a $(D DeflateFilter) object instantiated and initialized according to the arguments.
- *
- * Throws:
- *  $(D ZlibException) if initialization of zlib-stream failed.
  */
-DeflateFilter!(Buffer) deflateFilter(Buffer)(auto ref Buffer buffer, in bool doCompress = true,
+DeflateFilter!(Buffer) deflateFilter(Buffer)(Buffer buffer, in bool doCompress = true,
                                              lazy int level = Z_DEFAULT_COMPRESSION)
 {
     if (doCompress)
@@ -679,36 +655,46 @@ DeflateFilter!(Buffer) deflateFilter(Buffer)(auto ref Buffer buffer, in bool doC
 
 unittest
 {
+    static struct PartialData
+    {
+        ubyte[] data, now;
+
+        this(ubyte[] src) { data = src; popFront(); }
+
+        @property bool empty() { return data.empty; }
+
+        @property ubyte[] front() { return now; }
+
+        void popFront()
+        { 
+            auto size = data.length > 4 ? 4 : data.length;
+
+            now  = data[0..size];
+            data = data[size..$];
+        }
+    }
+
     void check(in int status)
     {
         if (status != Z_OK && status != Z_STREAM_END)
             throw new ZlibException(status);
     }
 
-    scope filter = deflateFilter(SimpleBuffer());
+    ubyte[] result, tests = [1, 2];
 
     // deflation
-    ubyte[] tests = [1, 2];
+    scope deflater = deflateFilter(SimpleBuffer());
 
     foreach (v; tests)
-        filter.put(v);
-    filter.put(tests);
-    filter.flush();
+        deflater.put(v);
+    deflater.put(tests);
+    deflater.flush();
 
     // inflation
-    z_stream stream;
-    ubyte[]  result = new ubyte[](4);
+    scope inflater = deflateFilter(PartialData(deflater.buffer.data), false);
 
-    check(inflateInit(&stream));
-
-    stream.next_in   = filter.buffer.data.ptr;
-    stream.avail_in  = filter.buffer.data.length;
-    stream.next_out  = result.ptr;
-    stream.avail_out = result.length;
-
-    check(inflate(&stream, Z_FINISH));
-
-    inflateEnd(&stream);
+    foreach (inflated; inflater)
+        result ~= inflated;
 
     assert(result == tests ~ tests);
 }
