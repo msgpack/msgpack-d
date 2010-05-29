@@ -295,6 +295,15 @@ struct BinaryFileWriter
 
 
     /**
+     * Closes $(D File) object.
+     */
+    void close()
+    {
+        file_.close();
+    }
+
+
+    /**
      * Writes $(D_PARAM value) to buffer.
      *
      * Params:
@@ -347,13 +356,15 @@ unittest
 
     { // output to name file
         auto output = File(name, "wb");
-        auto buffer = binaryFileWriter(output, true);
+        auto writer = binaryFileWriter(output, true);
 
         foreach (v; tests)
-            buffer.put(v);
-        buffer.put(tests);
+            writer.put(v);
+        writer.put(tests);
 
-        assert(buffer.data == tests ~ tests);
+        writer.close();
+
+        assert(writer.data == tests ~ tests);
     }
     { // input from name file
         auto input  = File(name, "rb");
