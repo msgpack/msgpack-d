@@ -38,178 +38,201 @@ class UnpackException : Exception
 }
 
 
-/**
- * Internal buffer and related operations for Unpacker
- *
- * Following Unpackers mixin this template.
- *
- * -----
- * //buffer image:
- * +-------------------------------------------+
- * | [object] | [obj | unparsed... | unused... |
- * +-------------------------------------------+
- *            ^ offset
- *                   ^ current
- *                                 ^ used
- *                                             ^ buffer.length
- * -----
- */
-mixin template InternalBuffer()
+version (D_Ddoc)
 {
-  private:
-    ubyte[] buffer_;  // internal buffer
-    size_t  used_;    // index that buffer cosumed
-    size_t  offset_;  // index that buffer parsed
-    size_t  parsed_;  // total size of parsed message
-    bool    hasRaw_;  // indicates whether Raw object has been deserialized
-
-
-  public:
     /**
-     * Forwards to internal buffer.
+     * Internal buffer and related operations for Unpacker
      *
-     * Returns:
-     *  the reference of internal buffer.
+     * Following Unpackers mixin this template. Unpacker uses following methods.
+     *
+     * -----
+     * //buffer image:
+     * +-------------------------------------------+
+     * | [object] | [obj | unparsed... | unused... |
+     * +-------------------------------------------+
+     *            ^ offset
+     *                   ^ current
+     *                                 ^ used
+     *                                             ^ buffer.length
+     * -----
+     *
+     * This mixin template is a private.
      */
-    @property nothrow ubyte[] buffer()
+    mixin template InternalBuffer()
     {
-        return buffer_;
-    }
+        /**
+         * Forwards to internal buffer.
+         *
+         * Returns:
+         *  the reference of internal buffer.
+         */
+        @property nothrow ubyte[] buffer();
 
 
-    /**
-     * Fills internal buffer with $(D_PARAM target).
-     *
-     * Params:
-     *  target = new serialized buffer to deserialize.
-     */
-    void feed(in ubyte[] target)
-    in
-    {
-        assert(target.length);
-    }
-    body
-    {
-        /*
-         * Expands internal buffer.
+        /**
+         * Fills internal buffer with $(D_PARAM target).
          *
          * Params:
-         *  size = new buffer size to append.
+         *  target = new serialized buffer to deserialize.
          */
-        void expandBuffer(in size_t size)
+        void feed(in ubyte[] target);
+
+
+        /**
+         * Consumes buffer. This method is helper for buffer property.
+         * You must use this method if you write bytes to buffer directly.
+         *
+         * Params:
+         *  size = the number of consuming.
+         */
+        nothrow void bufferConsumed(in size_t size);
+
+
+        /**
+         * Removes unparsed buffer.
+         */
+        nothrow void removeUnparsed();
+
+
+        /**
+         * Returns:
+         *  the total size including unparsed buffer size.
+         */
+        @property nothrow size_t size() const;
+
+
+        /**
+         * Returns:
+         *  the parsed size of buffer.
+         */
+        @property nothrow size_t parsedSize() const;
+
+
+        /**
+         * Returns:
+         *  the unparsed size of buffer.
+         */
+        @property nothrow size_t unparsedSize() const;
+    }
+}
+else
+{ 
+    private mixin template InternalBuffer()
+    {
+      private:
+        ubyte[] buffer_;  // internal buffer
+        size_t  used_;    // index that buffer cosumed
+        size_t  offset_;  // index that buffer parsed
+        size_t  parsed_;  // total size of parsed message
+        bool    hasRaw_;  // indicates whether Raw object has been deserialized
+
+
+      public:
+        @property nothrow ubyte[] buffer()
         {
-            // rewinds buffer(completed deserialization)
-            if (used_ == offset_ && !hasRaw_) {
-                used_ =  offset_ = 0;
-
-                if (buffer_.length < size)
-                    buffer_.length = size;
-
-                return;
-            }
-
-            // deserializing state is mid-flow(buffer has non-parsed data yet)
-            auto unparsed = buffer_[offset_..used_];
-            auto restSize = buffer_.length - used_ + offset_;
-            auto newSize  = size > restSize ? unparsedSize + size : buffer_.length;
-
-            if (hasRaw_) {
-                hasRaw_ = false;
-                buffer_ = new ubyte[](newSize);
-            } else {
-                buffer_.length = newSize;
-
-                // avoids overlapping copy
-                auto area = buffer_[0..unparsedSize];
-                unparsed  = area.overlap(unparsed) ? unparsed.dup : unparsed;
-            }
-
-            buffer_[0..unparsedSize] = unparsed;
-            used_   = unparsedSize;
-            offset_ = 0;
+            return buffer_;
         }
 
-        const size = target.length;
 
-        // lacks current buffer?
-        if (buffer_.length - used_ < size)
-            expandBuffer(size);
+        void feed(in ubyte[] target)
+        in
+        {
+            assert(target.length);
+        }
+        body
+        {
+            /*
+             * Expands internal buffer.
+             *
+             * Params:
+             *  size = new buffer size to append.
+             */
+            void expandBuffer(in size_t size)
+            {
+                // rewinds buffer(completed deserialization)
+                if (used_ == offset_ && !hasRaw_) {
+                    used_ =  offset_ = 0;
 
-        buffer_[used_..used_ + size] = target;
-        used_ += size;
-    }
+                    if (buffer_.length < size)
+                        buffer_.length = size;
 
+                    return;
+                }
 
-    /**
-     * Consumes buffer. This method is helper for buffer property.
-     * You must use this method if you write bytes to buffer directly.
-     *
-     * Params:
-     *  size = the number of consuming.
-     */
-    nothrow void bufferConsumed(in size_t size)
-    {
-        if (used_ + size > buffer_.length)
-            used_ = buffer_.length;
-        else
+                // deserializing state is mid-flow(buffer has non-parsed data yet)
+                auto unparsed = buffer_[offset_..used_];
+                auto restSize = buffer_.length - used_ + offset_;
+                auto newSize  = size > restSize ? unparsedSize + size : buffer_.length;
+
+                if (hasRaw_) {
+                    hasRaw_ = false;
+                    buffer_ = new ubyte[](newSize);
+                } else {
+                    buffer_.length = newSize;
+
+                    // avoids overlapping copy
+                    auto area = buffer_[0..unparsedSize];
+                    unparsed  = area.overlap(unparsed) ? unparsed.dup : unparsed;
+                }
+
+                buffer_[0..unparsedSize] = unparsed;
+                used_   = unparsedSize;
+                offset_ = 0;
+            }
+
+            const size = target.length;
+
+            // lacks current buffer?
+            if (buffer_.length - used_ < size)
+                expandBuffer(size);
+
+            buffer_[used_..used_ + size] = target;
             used_ += size;
-    }
+        }
 
 
-    /**
-     * Removes unparsed buffer.
-     */
-    nothrow void removeUnparsed()
-    {
-        used_ = offset_;
-    }
+        nothrow void bufferConsumed(in size_t size)
+        {
+            if (used_ + size > buffer_.length)
+                used_ = buffer_.length;
+            else
+                used_ += size;
+        }
 
 
-    /**
-     * Returns:
-     *  the total size including unparsed buffer size.
-     */
-    @property nothrow size_t size() const
-    {
-        return parsed_ - offset_ + used_;
-    }
+        nothrow void removeUnparsed()
+        {
+            used_ = offset_;
+        }
 
 
-    /**
-     * Returns:
-     *  the parsed size of buffer.
-     */
-    @property nothrow size_t parsedSize() const
-    {
-        return parsed_;
-    }
+        @property nothrow size_t size() const
+        {
+            return parsed_ - offset_ + used_;
+        }
 
 
-    /**
-     * Returns:
-     *  the unparsed size of buffer.
-     */
-    @property nothrow size_t unparsedSize() const
-    {
-        return used_ - offset_;
-    }
+        @property nothrow size_t parsedSize() const
+        {
+            return parsed_;
+        }
 
 
-  private:
-    /**
-     * Initializes buffer.
-     *
-     * Params:
-     *  target     = byte buffer to deserialize
-     *  bufferSize = size limit of buffer size
-     */
-    void initializeBuffer(in ubyte[] target, in size_t bufferSize = 8192)
-    {
-        const size = target.length;
+        @property nothrow size_t unparsedSize() const
+        {
+            return used_ - offset_;
+        }
 
-        buffer_ = new ubyte[](size > bufferSize ? size : bufferSize); 
-        used_   = size;
-        buffer_[0..size] = target;
+
+      private:
+        void initializeBuffer(in ubyte[] target, in size_t bufferSize = 8192)
+        {
+            const size = target.length;
+
+            buffer_ = new ubyte[](size > bufferSize ? size : bufferSize); 
+            used_   = size;
+            buffer_[0..size] = target;
+        }
     }
 }
 
@@ -219,7 +242,8 @@ mixin template InternalBuffer()
  */
 enum UnpackerType
 {
-    DIRECT, STREAM
+    DIRECT,  /// for direct-conversion deserializer
+    STREAM   /// for stream deserializer
 }
 
 
@@ -483,8 +507,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
      * Deserializes $(D_PARAM T) object and assigns to $(D_PARAM array).
      *
      * This is convenient method for array deserialization.
-     * Rollback will be successful if you deserialize raw type(ubyte[] or string).
-     * But rollback wiil be unsuccessful if you deserialize other type(int[], double[int], etc..)
+     * Rollback will be completely successful if you deserialize raw type(ubyte[] or string).
+     * But, Rollback will be one element(e.g. int) if you deserialize other types(e.g. int[], int[int])
      *
      * No assign if the length of deserialized object is 0.
      *
@@ -563,7 +587,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
 
 
     /**
-     * Deserializes $(D_PARAM T) object and assigns to $(D_PARAM array).
+     * Deserializes $(D_PARAM T) object and assigns to $(D_PARAM object).
      *
      * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D mp_unpack) method.
      * $(D mp_unpack) signature is:
@@ -574,9 +598,9 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
      * Checks length if $(D_PARAM T) is a $(D std.typecons.Tuple).
      *
      * Params:
-     *  array = the reference of array to assign.
-     *  args  = the arguments to class constructor(class only).
-     *          This is used at new statement if $(D_PARAM object) is $(D_KEYWORD null).
+     *  object = the reference of object to assign.
+     *  args   = the arguments to class constructor(class only).
+     *           This is used at new statement if $(D_PARAM object) is $(D_KEYWORD null).
      *
      * Returns:
      *  this to method chain.
@@ -1029,7 +1053,7 @@ unittest
  */
 struct Unpacked
 {
-    mp_Object object;
+    mp_Object object;  /// deserialized object
 
     alias object this;
 
@@ -1040,7 +1064,7 @@ struct Unpacked
      * Params:
      *  object = a deserialized object.
      */
-    this(ref mp_Object object)
+    this(mp_Object object)
     {
         this.object = object;
     }
@@ -1541,7 +1565,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
 
 
   private:
-    /**
+    /*
      * initializes internal stack environment.
      */
     nothrow void initializeContext()

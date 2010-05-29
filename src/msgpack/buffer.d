@@ -25,7 +25,7 @@ import std.stdio;
 import std.traits;
 import std.zlib : ZlibException;  // avoiding Z_* symbols conflict
 
-import etc.c.zlib;
+import etc.c.zlib;  // for DeflationFilter
 
 version(Posix)
 {
@@ -77,7 +77,7 @@ struct VRefBuffer
     size_t    index_;  // index for cunrrent chunk
 
     // for putRef
-    iovec[] vecList_;   // referece to large data or copied data.
+    iovec[] vecList_;  // referece to large data or copied data.
 
 
   public:
@@ -211,13 +211,6 @@ struct VRefBuffer
         else
             putRef(data);
     }
-
-
-    /*
-     * Not implemented yet bacause use case is rarity.
-     *
-    void migrate(VRefBuffer to);
-     */
 }
 
 
@@ -376,20 +369,16 @@ unittest
 
 
 /**
- * This filter deflates / inflates content using Deflate algorithm.
+ * This filter compresses data using Deflate algorithm.
  *
- * This implementation uses etc.c.zlib module.
- *
- * This filter becomes a InputRage if $(D_PARAM Buffer) meets isInputRange. And
- * this filter becomes a OutputRage if $(D_PARAM Buffer) meets isOutputRange.
+ * This implementation uses etc.c.zlib module. This filter is a OutputRange
  */
-class DeflateFilter(Buffer) if (isInputRange!(Buffer) || isOutputRange!(Buffer, ubyte[]))
+class DeflateFilter(Buffer) if (isOutputRange!(Buffer, ubyte[]))
 {
   private:
     enum TempSize = 128;  // for temporary buffer
 
-    bool     doCompress_;
-    Buffer   buffer_;  // buffer to input / output
+    Buffer   buffer_;  // buffer to output
     z_stream stream_;  // zlib-stream for deflation
 
 
@@ -398,44 +387,31 @@ class DeflateFilter(Buffer) if (isInputRange!(Buffer) || isOutputRange!(Buffer, 
      * Constructs a buffer.
      *
      * Params:
-     *  buffer     = the buffer to output / input
-     *  doCompress = filter do compress if true, otherwise do uncompress.
+     *  buffer     = the buffer to output.
      *  level      = Compression level for deflation.
      *
      * Throws:
      *  $(D ZlibException) if initialization of zlib-stream failed.
      */
-    this(Buffer buffer, bool doCompress = true, lazy int level = Z_DEFAULT_COMPRESSION)
+    this(Buffer buffer, in int level = Z_DEFAULT_COMPRESSION)
     in
     {
-        static if (!isInputRange!Buffer)
-            assert(doCompress, "inflation requires InputRange");
-        static if (!isOutputRange!(Buffer, ubyte[]))
-            assert(!doCompress, "deflation requires OutputRange");
-
         assert(Z_DEFAULT_COMPRESSION <= level && level <= Z_BEST_COMPRESSION);
     }
     body
     {
-        if (doCompress)
-            check(deflateInit(&stream_, level));
-        else
-            check(inflateInit(&stream_));
+        check(deflateInit(&stream_, level));
 
-        buffer_     = buffer;
-        doCompress_ = doCompress;
+        buffer_ = buffer;
     }
 
 
     /**
-     * Destructs a buffer. 
+     * Ends zlib-stream.
      */
     ~this()
     {
-        if (doCompress_)
-            deflateEnd(&stream_);
-        else
-            inflateEnd(&stream_);
+        deflateEnd(&stream_);
     }
 
 
@@ -458,136 +434,76 @@ class DeflateFilter(Buffer) if (isInputRange!(Buffer) || isOutputRange!(Buffer, 
     }
 
 
-    // for InputRange
-
-
-    static if (isInputRange!Buffer) {
-        /**
-         * Range primitive operation that checks iteration state.
-         *
-         * Returns:
-         *  true if there are no more elements to be iterated.
-         */
-        @property bool empty()
-        {
-            return buffer_.empty;
-        }
-
-
-        /**
-         * Range primitive operation that returns the currently iterated element.
-         *
-         * Returns:
-         *  the inflated content.
-         */
-        @property ubyte[] front()
-        {
-            ubyte[]         result, data = buffer_.front;
-            ubyte[TempSize] temp;
-
-            // set input
-            stream_.next_in  = data.ptr;
-            stream_.avail_in = data.length;
-
-            do {
-                // set output
-                stream_.next_out  = temp.ptr;
-                stream_.avail_out = TempSize;
-
-                check(inflate(&stream_, Z_SYNC_FLUSH));
-
-                result ~= temp[0..TempSize - stream_.avail_out];
-            } while (stream_.avail_in > 0)
-
-            return result;
-        }
-
-
-        /**
-         * Range primitive operation that advances the range to its next element.
-         */
-        void popFront()
-        { 
-            buffer_.popFront();
-        }
+    /**
+     * Writes $(D_PARAM value) to buffer with compression.
+     *
+     * Params:
+     *  value = the content to compress.
+     *
+     * Throws:
+     *  $(D ZlibException) if deflation failed.
+     */
+    void put(in ubyte value)
+    {
+        ubyte[1] values = [value];
+        put(values);
     }
 
 
-    // for OutputRange
+    /// ditto
+    void put(in ubyte[] values)
+    in
+    {
+        assert(values.length);
+    }
+    body
+    {
+        ubyte[]         result;
+        ubyte[TempSize] temp;
+
+        // set input
+        stream_.next_in  = cast(ubyte*)values.ptr;
+        stream_.avail_in = values.length;
+
+        do {
+            // set output
+            stream_.next_out  = temp.ptr;
+            stream_.avail_out = TempSize;
+
+            check(deflate(&stream_, Z_NO_FLUSH));
+
+            if (TempSize - stream_.avail_out)  // for performance(zlib has internal buffer)
+                result ~= temp[0..TempSize - stream_.avail_out];
+        } while (stream_.avail_in > 0)
+
+        if (result.length)  // avoids function call
+            buffer_.put(result);
+    }
 
 
-    static if (isOutputRange!(Buffer, ubyte[])) {
-        /**
-         * Writes $(D_PARAM value) to buffer with deflation.
-         *
-         * Params:
-         *  value = the content to deflate.
-         *
-         * Throws:
-         *  $(D ZlibException) if deflation failed.
-         */
-        void put(in ubyte value)
-        {
-            ubyte[1] values = [value];
-            put(values);
-        }
+    /**
+     * Flushes the zlib-stream.
+     */
+    void flush()
+    {
+        ubyte[]         result;
+        ubyte[TempSize] temp;
 
+        while (true) {
+            stream_.next_out  = temp.ptr;
+            stream_.avail_out = TempSize;
 
-        /// ditto
-        void put(in ubyte[] values)
-        in
-        {
-            assert(values.length);
-        }
-        body
-        {
-            ubyte[]         result;
-            ubyte[TempSize] temp;
+            auto status = deflate(&stream_, Z_FINISH);
 
-            // set input
-            stream_.next_in  = cast(ubyte*)values.ptr;
-            stream_.avail_in = values.length;
-
-            do {
-                // set output
-                stream_.next_out  = temp.ptr;
-                stream_.avail_out = TempSize;
-
-                check(deflate(&stream_, Z_NO_FLUSH));
-
-                if (TempSize - stream_.avail_out)  // for performance(zlib has internal buffer)
-                    result ~= temp[0..TempSize - stream_.avail_out];
-            } while (stream_.avail_in > 0)
-
-            if (result.length)  // avoids function call
-                buffer_.put(result);
-        }
-
-
-        /**
-         * Flushes the zlib-stream(deflation only).
-         */
-        void flush()
-        {
-            ubyte[]         result;
-            ubyte[TempSize] temp;
-
-            while (true) {
-                stream_.next_out  = temp.ptr;
-                stream_.avail_out = TempSize;
-
-                auto status = deflate(&stream_, Z_FINISH);
-
-                switch (status) {
-                case Z_STREAM_END:
-                    buffer_.put(result ~ temp[0..TempSize - stream_.avail_out]);
-                    return;
-                case Z_OK:
-                    result ~= temp;
-                    break;
-                default:
-                    check(status);
-                }
+            switch (status) {
+            case Z_STREAM_END:
+                buffer_.put(result ~ temp[0..TempSize - stream_.avail_out]);
+                return;
+            case Z_OK:
+                result ~= temp;
+                break;
+            default:
+                check(status);
             }
         }
     }
@@ -597,14 +513,11 @@ class DeflateFilter(Buffer) if (isInputRange!(Buffer) || isOutputRange!(Buffer, 
      * Resets the zlib-stream.
      *
      * Throws:
-     *  $(D ZlibException) if reset of zlib-stream failed.
+     *  $(D ZlibException) if resets of zlib-stream failed.
      */
     void reset()
     {
-        if (doCompress_)
-            check(deflateReset(&stream_));
-        else
-            check(inflateReset(&stream_));
+        check(deflateReset(&stream_));
     }
 
 
@@ -621,10 +534,150 @@ class DeflateFilter(Buffer) if (isInputRange!(Buffer) || isOutputRange!(Buffer, 
     void check(in int status)
     {
         if (status != Z_OK) {
-            if (doCompress_)
-                deflateEnd(&stream_);
-            else
-                inflateEnd(&stream_);
+            deflateEnd(&stream_);
+
+            throw new ZlibException(status);
+        }
+    }
+}
+
+
+/**
+ * This filter uncompresses data using Deflate algorithm.
+ *
+ * This implementation uses etc.c.zlib module. This filter is a InputRange.
+ */
+class DeflateFilter(Buffer) if (isInputRange!(Buffer))
+{
+  private:
+    enum TempSize = 128;  // for temporary buffer
+
+    Buffer   buffer_;  // buffer to input
+    z_stream stream_;  // zlib-stream for inflation
+
+
+  public:
+    /**
+     * Constructs a buffer.
+     *
+     * Params:
+     *  buffer = the buffer to input
+     *
+     * Throws:
+     *  $(D ZlibException) if initialization of zlib-stream failed.
+     */
+    this(Buffer buffer)
+    {
+        check(inflateInit(&stream_));
+
+        buffer_ = buffer;
+    }
+
+
+    /**
+     * Ends zlib-stream.
+     */
+    ~this()
+    {
+        inflateEnd(&stream_);
+    }
+
+
+    /**
+     * Forwards to buffer.
+     *
+     * Returns:
+     *  the buffer.
+     */
+    static if (is(Unqual!Buffer == struct)) {
+        @property nothrow ref Buffer buffer()
+        {
+            return buffer_;
+        }
+    } else {
+        @property nothrow Buffer buffer()
+        {
+            return buffer_;
+        }
+    }
+
+
+    /**
+     * Range primitive operation that checks iteration state.
+     *
+     * Returns:
+     *  true if there are no more elements to be iterated.
+     */
+    @property bool empty()
+    {
+        return buffer_.empty;
+    }
+
+
+    /**
+     * Range primitive operation that returns the currently iterated element.
+     *
+     * Returns:
+     *  the uncompressed data.
+     */
+    @property ubyte[] front()
+    {
+        ubyte[]         result, data = buffer_.front;
+        ubyte[TempSize] temp;
+
+        // set input
+        stream_.next_in  = data.ptr;
+        stream_.avail_in = data.length;
+
+        do {
+            // set output
+            stream_.next_out  = temp.ptr;
+            stream_.avail_out = TempSize;
+
+            check(inflate(&stream_, Z_SYNC_FLUSH));
+
+            result ~= temp[0..TempSize - stream_.avail_out];
+        } while (stream_.avail_in > 0)
+
+        return result;
+    }
+
+
+    /**
+     * Range primitive operation that advances the range to its next element.
+     */
+    void popFront()
+    { 
+        buffer_.popFront();
+    }
+
+
+    /**
+     * Resets the zlib-stream.
+     *
+     * Throws:
+     *  $(D ZlibException) if resets of zlib-stream failed.
+     */
+    void reset()
+    {
+        check(inflateReset(&stream_));
+    }
+
+
+  private:
+    /**
+     * Checks stream status.
+     *
+     * Params:
+     *  status = return code from zlib function.
+     *
+     * Throws:
+     *  $(D ZlibException) if $(D_PARAM status) isn't $(D Z_OK).
+     */
+    void check(in int status)
+    {
+        if (status != Z_OK) {
+            inflateEnd(&stream_);
 
             throw new ZlibException(status);
         }
@@ -635,21 +688,21 @@ class DeflateFilter(Buffer) if (isInputRange!(Buffer) || isOutputRange!(Buffer, 
 /**
  * Helper for $(D DeflateFilter) construction.
  *
+ * Creates compression filter if $(D_PARAM Buffer) is OutputRange, otherwise uncompression filter.
+ *
  * Params:
- *  buffer     = the buffer to output / input
- *  doCompress = filter do compress if true, otherwise do uncompress.
- *  level      = Compression level for deflation.
+ *  buffer = the buffer to output / input
+ *  level  = Compression level for compression.
  *
  * Returns:
  *  a $(D DeflateFilter) object instantiated and initialized according to the arguments.
  */
-DeflateFilter!(Buffer) deflateFilter(Buffer)(Buffer buffer, in bool doCompress = true,
-                                             lazy int level = Z_DEFAULT_COMPRESSION)
+DeflateFilter!(Buffer) deflateFilter(Buffer)(Buffer buffer, lazy int level = Z_DEFAULT_COMPRESSION)
 {
-    if (doCompress)
-        return new typeof(return)(buffer, doCompress, level);
+    static if (isOutputRange!(Buffer, ubyte[]))
+        return new typeof(return)(buffer, level);
     else
-        return new typeof(return)(buffer, doCompress);
+        return new typeof(return)(buffer);
 }
 
 
@@ -691,7 +744,7 @@ unittest
     deflater.flush();
 
     // inflation
-    scope inflater = deflateFilter(PartialData(deflater.buffer.data), false);
+    scope inflater = deflateFilter(PartialData(deflater.buffer.data));
 
     foreach (inflated; inflater)
         result ~= inflated;

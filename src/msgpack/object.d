@@ -28,14 +28,14 @@ version(unittest) import std.typecons;
  */
 enum mp_Type
 {
-    NIL,
-    BOOLEAN,
-    POSITIVE_INTEGER,
-    NEGATIVE_INTEGER,
-    FLOAT,  // Original version is DOUBLE
-    ARRAY,
-    MAP,
-    RAW
+    NIL,               ///
+    BOOLEAN,           ///
+    POSITIVE_INTEGER,  ///
+    NEGATIVE_INTEGER,  ///
+    FLOAT,             /// 
+    ARRAY,             ///
+    MAP,               ///
+    RAW                ///
 }
 
 
@@ -56,15 +56,18 @@ class InvalidTypeException : Exception
  */
 struct mp_Object
 {
+    /**
+     * msgpack value representation
+     */
     static union Value
     {
-        bool          boolean;
-        ulong         uinteger;
-        long          integer;
-        real          floating;
-        mp_Object[]   array;
-        mp_KeyValue[] map;
-        ubyte[]       raw;
+        bool          boolean;   /// corresponding ot mp_Type.BOOLEAN
+        ulong         uinteger;  /// corresponding ot mp_Type.POSITIVE_INTEGER
+        long          integer;   /// corresponding ot mp_Type.NEGATIVE_INTEGER
+        real          floating;  /// corresponding ot mp_Type.FLOAT
+        mp_Object[]   array;     /// corresponding ot mp_Type.ARRAY
+        mp_KeyValue[] map;       /// corresponding ot mp_Type.MAP
+        ubyte[]       raw;       /// corresponding ot mp_Type.RAW
     }
 
 
@@ -142,7 +145,7 @@ struct mp_Object
 
 
     /**
-     * Converts to $(D_PARAM T) type.
+     * Converts object value to $(D_PARAM T) type.
      *
      * Returns:
      *  converted value.
