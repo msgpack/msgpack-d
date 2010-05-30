@@ -642,7 +642,9 @@ class DeflateFilter(Buffer) if (isInputRange!(Buffer))
             stream_.next_out  = temp.ptr;
             stream_.avail_out = TempSize;
 
-            check(inflate(&stream_, Z_SYNC_FLUSH));
+            auto status = inflate(&stream_, Z_SYNC_FLUSH);
+            if (status != Z_STREAM_END)
+                check(status);
 
             result ~= temp[0..TempSize - stream_.avail_out];
         } while (stream_.avail_in > 0)
