@@ -263,7 +263,7 @@ struct BinaryFileWriter
 {
   private:
     File         file_;     // stream to write
-    bool         isCache_;  // indicates whether caches content
+    bool         doCache_;  // indicates whether caches content
     SimpleBuffer cache_;    // buffer for cache
 
 
@@ -273,12 +273,12 @@ struct BinaryFileWriter
      *
      * Params:
      *  file    = the $(D File) to output.
-     *  isCache = caching content if true.
+     *  doCache = caching content if true.
      */
-    this(ref File file, bool isCache = false)
+    this(ref File file, bool doCache = false)
     {
         file_    = file;
-        isCache_ = isCache;
+        doCache_ = doCache;
     }
 
 
@@ -287,12 +287,12 @@ struct BinaryFileWriter
      *
      * Params:
      *  name    = filename to $(D File) construction.
-     *  isCache = caching content if true.
+     *  doCache = caching content if true.
      */
-    this(in string name, bool isCache = false)
+    this(in string name, bool doCache = false)
     {
         file_    = File(name, "wb");
-        isCache_ = isCache;
+        doCache_ = doCache;
     }
 
 
@@ -300,11 +300,11 @@ struct BinaryFileWriter
      * Forwards to cache contents.
      *
      * Returns:
-     *  the cache contents if isCache is true, otherwise null.
+     *  the cache contents if doCache is true, otherwise null.
      */
     @property /* nothrow */ ubyte[] data() // data method of Appender isn't nothrow
     {
-        return isCache_ ? cache_.data : null;
+        return doCache_ ? cache_.data : null;
     }
 
 
@@ -336,7 +336,7 @@ struct BinaryFileWriter
     /// ditto
     void put(in ubyte[] values)
     {
-        if (isCache_)
+        if (doCache_)
             cache_.put(values);
 
         if (file_.isOpen)
