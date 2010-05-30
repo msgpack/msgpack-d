@@ -269,15 +269,29 @@ struct BinaryFileWriter
 
   public:
     /**
-     * Constructs a buffer.
+     * Constructs a writer.
      *
      * Params:
-     *  file    = the pointer to $(D File).
+     *  file    = the $(D File) to output.
      *  isCache = caching content if true.
      */
     this(ref File file, bool isCache = false)
     {
         file_    = file;
+        isCache_ = isCache;
+    }
+
+
+    /**
+     * Constructs a writer and opens $(D_PARAM name) file.
+     *
+     * Params:
+     *  name    = filename to $(D File) construction.
+     *  isCache = caching content if true.
+     */
+    this(in string name, bool isCache = false)
+    {
+        file_    = File(name, "wb");
         isCache_ = isCache;
     }
 
@@ -333,30 +347,13 @@ struct BinaryFileWriter
 }
 
 
-/**
- * Helper for $(D BinaryFileWriter) construction.
- *
- * Params:
- *  file    = the pointer to $(D File).
- *  isCache = caching content if true.
- *
- * Returns:
- *  a $(D BinaryFileWriter) object instantiated and initialized according to the arguments.
- */
-BinaryFileWriter binaryFileWriter(ref File file, bool isCache = false)
-{
-    return typeof(return)(file, isCache);
-}
-
-
 unittest
 {
     auto    name  = "deleteme";
     ubyte[] tests = [1, 2];
 
     { // output to name file
-        auto output = File(name, "wb");
-        auto writer = binaryFileWriter(output, true);
+        auto writer = BinaryFileWriter(name, true);
 
         foreach (v; tests)
             writer.put(v);
