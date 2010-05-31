@@ -338,7 +338,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
 
 
     /// ditto
-    ref Unpacker unpack(T)(ref T value) if (isUnsigned!(Unqual!T))
+    ref Unpacker unpack(T)(ref T value) if (isUnsigned!T)
     {
         canRead(Offset, 0);
         const header = read();
@@ -382,7 +382,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
 
 
     /// ditto
-    ref Unpacker unpack(T)(ref T value) if (isSigned!(Unqual!T) && !isFloatingPoint!(Unqual!T))
+    ref Unpacker unpack(T)(ref T value) if (isSigned!T && !isFloatingPoint!T)
     {
         canRead(Offset, 0);
         const header = read();
@@ -454,7 +454,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
 
 
     /// ditto
-    ref Unpacker unpack(T)(ref T value) if (isFloatingPoint!(Unqual!T))
+    ref Unpacker unpack(T)(ref T value) if (isFloatingPoint!T)
     {
         canRead(Offset, 0);
         const header = read();
@@ -498,6 +498,19 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
         default:
             rollback(0);
         }
+
+        return this;
+    }
+
+
+    /// ditto
+    ref Unpacker unpack(T)(ref T value) if (is(Unqual!T == enum))
+    {
+        OriginalType!T temp;
+
+        unpack(temp);
+
+        value = cast(T)temp;
 
         return this;
     }
@@ -951,6 +964,23 @@ unittest
         unpacker.unpack(result);
 
         assert(test == result);
+    }
+    { // enum
+        enum   : float { D = 0.5 }
+        enum E : ulong { U = 100 }
+
+        mixin DefinePacker;
+
+        float f = D,   resultF;
+        E     e = E.U, resultE;
+
+        packer.pack(D, e);
+
+        auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
+        unpacker.unpack(resultF, resultE);
+
+        assert(f == resultF);
+        assert(e == resultE);
     }
     { // container
         mixin DefinePacker;

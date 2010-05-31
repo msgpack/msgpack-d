@@ -191,6 +191,13 @@ struct mp_Object
 
 
     /// ditto
+    @property T as(T)() if (is(Unqual!T == enum))
+    {
+        return cast(T)as!(OriginalType!T);
+    }
+
+
+    /// ditto
     @property T as(T)() if (isArray!T)
     {
         if (type == mp_Type.NIL)
@@ -495,6 +502,15 @@ unittest
     assert(object.type      == mp_Type.FLOAT);
     assert(object.as!(real) == 0.1e-10L);
     assert(other            == 0.1e-20L);
+
+    // enum
+    enum E : real { F = 0.1e-10L }
+
+    E e1 = object.as!(E);
+    E e2 = other.as!(E);
+
+    assert(e1 == E.F);
+    assert(e2 != E.F);
 
     // raw
     object = mp_Object(cast(ubyte[])[72, 105, 33]);

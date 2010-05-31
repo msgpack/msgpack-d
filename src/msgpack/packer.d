@@ -427,6 +427,15 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
 
 
     /// ditto
+    ref Packer pack(T)(in T value) if (is(Unqual!T == enum))
+    {
+        pack(cast(OriginalType!T)value);
+
+        return this;
+    }
+
+
+    /// ditto
     ref Packer pack(T)(in T array) if (isArray!T)
     {
         alias typeof(T.init[0]) U;
@@ -829,6 +838,17 @@ unittest
                 assert(memcmp(&buffer.data[2 + f.sizeof], &e, e.sizeof) == 0);
             }
         }
+    }
+    { // enum
+        enum E : ubyte { A = ubyte.max }
+
+        mixin DefinePacker; E e = E.A;
+
+        packer.pack(e);
+        assert(buffer.data[0] == Format.UINT8);
+
+        auto answer = E.A;
+        assert(memcmp(&buffer.data[1], &answer, (OriginalType!E).sizeof) == 0);
     }
     { // container
         static struct Test { ubyte format; size_t value; }
