@@ -99,8 +99,6 @@ class BTree(Key, Data)
                 packer.packArray(2).pack(key, data);
         }
 
-        void mp_unpack(mp_Object object) { }
-
         void mp_unpack(ref Unpacker!(UnpackerType.DIRECT) unpacker)
         {
             if (unpacker.unpackArray() == 4) {
@@ -416,8 +414,6 @@ class BTree(Key, Data)
     {
         packer.pack(root);
     }
-
-    void mp_unpack(mp_Object object) { }
 
     void mp_unpack(ref Unpacker!(UnpackerType.DIRECT) unpacker)
     {
