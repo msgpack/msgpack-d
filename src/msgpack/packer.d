@@ -530,6 +530,9 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
         static if (!__traits(compiles, { T t; t.mp_pack(this); }))
             static assert(false, T.stringof ~ " is not a MessagePackable object");
 
+        if (object is null)
+            return packNil();
+
         object.mp_pack(this);
 
         return this;

@@ -542,6 +542,9 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     {
         alias typeof(T.init[0]) U;
 
+        if (checkNil())
+            return unpackNil(array);
+
         // Raw bytes
         static if (isByte!U || isSomeChar!U) {
             auto length = unpackRaw();
@@ -585,6 +588,9 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
         alias typeof(T.init.keys[0])   K;
         alias typeof(T.init.values[0]) V;
 
+        if (checkNil())
+            return unpackNil(array);
+
         auto length = unpackMap();
         if (length == 0)
             return this;
@@ -624,6 +630,9 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
         {
             static if (!__traits(compiles, { T t; t.mp_unpack(this); }))
                 static assert(false, T.stringof ~ " is not a MessagePackable object");
+
+            if (checkNil())
+                return unpackNil(object);
 
             if (object is null)
                 object = new T(args);
@@ -851,9 +860,23 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     }
 
 
+    /**
+     * Next object is nil?
+     *
+     * Returns:
+     *  true if next object is nil.
+     */
+    bool checkNil()
+    {
+        canRead(Offset, 0);
+
+        return buffer_[offset_] == Format.NIL;
+    }
+
+
   private:
     /*
-     * Reading test to buffer.
+     * Reading test.
      *
      * Params:
      *  size   = the size to read.
@@ -862,7 +885,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
      * Throws:
      *  UnpackException when doesn't read from buffer.
      */
-    void canRead(in size_t size, in size_t offset = 1)
+    void canRead(in size_t size, in size_t offset = Offset)
     {
         if (used_ - offset_ < size) {
             if (offset)
