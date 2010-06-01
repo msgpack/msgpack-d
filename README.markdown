@@ -6,7 +6,7 @@ MessagePack for D is a pure D implementation of MessagePack.
 
 # Features
 
-* Small and High peformance
+* Small and High performance
 * Zero copy serialization / deserialization
 * Stream deserializer / Direct-conversion deserializer
 * Support D features(Range, Tuple, real type)
@@ -16,7 +16,7 @@ In addition, Unpacker raises exception if loss of precision occures.
 
 # Usage
 
-See example directory(simple.d, custom.d, stream.d).
+See example directory.
 
 # Link
 
