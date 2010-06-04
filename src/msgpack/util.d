@@ -28,14 +28,18 @@ version(unittest) import msgpack.packer, msgpack.buffer;
  * This template provides those methods to struct/class.
  *
  * Example:
------
-struct S
-{
-    int num; string str;
-    mixin MessagePackable;  // all members
-    // mixin MessagePackable!("num");  // num only
-}
------
+ * -----
+ * struct S
+ * {
+ *     int num; string str;
+ *     // mixin point is here.
+ *     // http://d.puremagic.com/issues/show_bug.cgi?id = 1099
+ *     mixin MessagePackable;  // all members
+ *     // mixin MessagePackable!("num");  // num only
+ * }
+ * -----
+ *
+ * Defines those methods manually if you treat complex data-structure.
  */
 mixin template MessagePackable(Members...)
 {
@@ -74,10 +78,10 @@ mixin template MessagePackable(Members...)
 
 
         /**
-         * Deserializes $(D MessagePack) object to members for direct conversion deserializer.
+         * Deserializes $(D MessagePack) object to members for direct-conversion deserializer.
          *
          * Params:
-         *  object = the reference to direct conversion deserializer.
+         *  object = the reference to direct-conversion deserializer.
          *
          * Throws:
          *  InvalidTypeException if deserialized object size is mismatched.
@@ -117,7 +121,7 @@ mixin template MessagePackable(Members...)
 
 
         /**
-         * Member selecting version of mp_unpack for direct converion deserializer.
+         * Member selecting version of mp_unpack for direct-converion deserializer.
          */
         void mp_unpack(ref Unpacker!(UnpackerType.DIRECT) unpacker)
         {

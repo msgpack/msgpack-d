@@ -1,7 +1,7 @@
 // Written in the D programming language.
 
 /**
- * Serializer and Deserializer usage
+ * Serializer and Stream Deserializer usage
  */
 
 import std.stdio;
@@ -13,8 +13,7 @@ import msgpack.unpacker;
 
 void main()
 {
-    SimpleBuffer buffer;
-    auto packer = packer(&buffer);
+    auto packer = packer(SimpleBuffer());
 
     packer.packArray(5).packNil().packTrue().pack("Hi!", -1, [1, 2]);
 

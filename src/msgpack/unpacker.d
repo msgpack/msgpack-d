@@ -43,7 +43,7 @@ version (D_Ddoc)
     /**
      * Internal buffer and related operations for Unpacker
      *
-     * Following Unpackers mixin this template. Unpacker uses following methods.
+     * Following Unpackers mixin this template. So, Unpacker can use following methods.
      *
      * -----
      * //buffer image:
@@ -257,7 +257,6 @@ enum UnpackerType
  * // serializedData is [10, 0.1, false]
  * auto unpacker = unpacker!(UnpackerType.DIRECT)(serializedData);
  *
- * // manually
  * uint   n;
  * double d;
  * bool   b;
@@ -266,10 +265,10 @@ enum UnpackerType
  * if (size != 3)
  *     throw new Exception("Size is mismatched!");
  *
- * unpacker.unpack(n).unpack(d).unpack(b); // or unpack(n, d, b)
+ * unpacker.unpack(n).unpack(d).unpack(b); // or unpacker.unpack(n, d, b)
  *
  * // or
- * Tuple!(uint, double, true) record;
+ * Tuple!(uint, double, bool) record;
  * unpacker.unpack(record);  // record is [10, 0.1, false]
  * -----
  */
@@ -520,7 +519,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
      * Deserializes $(D_PARAM T) object and assigns to $(D_PARAM array).
      *
      * This is convenient method for array deserialization.
-     * Rollback will be completely successful if you deserialize raw type(ubyte[] or string).
+     * Rollback will be completely successful if you deserialize raw type((u)byte[] or string types).
      * But, Rollback will be one element(e.g. int) if you deserialize other types(e.g. int[], int[int])
      *
      * No assign if the length of deserialized object is 0.
@@ -1640,7 +1639,6 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
  *
  * Returns:
  *  a $(D Unpacker) object instantiated and initialized according to the arguments.
- *  Stream deserializer if $(D_PARAM isStream) is true, otherwise direct-conversion deserializer.
  */
 @safe Unpacker!(Type) unpacker(UnpackerType Type = UnpackerType.STREAM)(in ubyte[] target, in size_t bufferSize = 8192)
 {
@@ -1687,7 +1685,7 @@ unittest
 private:
 
 
-/**
+/*
  * Sets object type and value.
  *
  * Params:

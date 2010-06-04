@@ -24,18 +24,19 @@ version(unittest) import std.c.string, std.typecons, std.typetuple, msgpack.buff
  * $(D Packer) is a $(D MessagePack) serializer
  *
  * Example:
------
-auto buffer = vrefBuffer;
-auto packer = packer(&buffer);
-
-packer.packArray(4);  // sets array length
-packer.packFalse();   // false
-packer.pack(100);     // 100   of int
-packer.pack(1e-10);   // 1e-10 of double
-packer.packNil();     // null
-
-stdout.rawWrite(buffer.data);  // or packer.buffer.data
------
+ * -----
+ * auto packer = packer(SimpleBuffer());
+ *
+ * packer.packArray(4);  // sets array length
+ * packer.packFalse();   // false
+ * packer.pack(100);     // 100   of int
+ * packer.pack(1e-10);   // 1e-10 of double
+ * packer.packNil();     // null
+ *
+ * // or packer.packArray(4).pack(false, 100, 1e-10).packNil();
+ *
+ * stdout.rawWrite(packer.buffer.data);
+ * -----
  *
  * Some buffers that Packer can use are in $(D msgpack.buffer).
  */

@@ -377,9 +377,9 @@ unittest
 
 
 /**
- * This filter compresses data using Deflate algorithm.
+ * This OutputRange filter compresses data using Deflate algorithm.
  *
- * This implementation uses etc.c.zlib module. This filter is a OutputRange
+ * This implementation uses etc.c.zlib module.
  */
 class DeflateFilter(Buffer) if (isOutputRange!(Buffer, ubyte[]))
 {
@@ -551,9 +551,9 @@ class DeflateFilter(Buffer) if (isOutputRange!(Buffer, ubyte[]))
 
 
 /**
- * This filter uncompresses data using Deflate algorithm.
+ * This InputRange filter uncompresses data using Deflate algorithm.
  *
- * This implementation uses etc.c.zlib module. This filter is a InputRange.
+ * This implementation uses etc.c.zlib module.
  */
 class DeflateFilter(Buffer) if (isInputRange!(Buffer))
 {

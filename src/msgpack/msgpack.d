@@ -24,7 +24,7 @@ version(unittest) import std.typecons, msgpack.common;
 /**
  * Serializes $(D_PARAM args).
  *
- * Single object if the length of $(D_PARAM args) == 1,
+ * Assumes single object if the length of $(D_PARAM args) == 1,
  * otherwise array object.
  *
  * Params:
@@ -35,8 +35,7 @@ version(unittest) import std.typecons, msgpack.common;
  */
 ubyte[] pack(Args...)(in Args args)
 {
-    SimpleBuffer buffer;
-    auto packer = packer(&buffer);
+    auto packer = packer(SimpleBuffer());
 
     static if (Args.length == 1) {
         packer.pack(args[0]);
@@ -90,7 +89,7 @@ Unpacked unpack(Tdummy = void)(in ubyte[] buffer)
 /**
  * Deserializes $(D_PARAM buffer) using direct conversion deserializer.
  *
- * Single object if the length of $(D_PARAM args) == 1,
+ * Assumes single object if the length of $(D_PARAM args) == 1,
  * otherwise array object.
  *
  * Params:
