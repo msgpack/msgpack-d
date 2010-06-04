@@ -82,14 +82,14 @@ struct mp_Object
      *  value   = the real content.
      *  mp_type = the type of object.
      */
-    this(mp_Type mp_type = mp_Type.NIL)
+    @safe this(mp_Type mp_type = mp_Type.NIL)
     {
         type = mp_type;
     }
 
 
     /// ditto
-    this(bool value, mp_Type mp_type = mp_Type.BOOLEAN)
+    @safe this(bool value, mp_Type mp_type = mp_Type.BOOLEAN)
     {
         this(mp_type);
         via.boolean = value;
@@ -97,7 +97,7 @@ struct mp_Object
 
 
     /// ditto
-    this(ulong value, mp_Type mp_type = mp_Type.POSITIVE_INTEGER)
+    @safe this(ulong value, mp_Type mp_type = mp_Type.POSITIVE_INTEGER)
     {
         this(mp_type);
         via.uinteger = value;
@@ -105,7 +105,7 @@ struct mp_Object
 
 
     /// ditto
-    this(long value, mp_Type mp_type = mp_Type.NEGATIVE_INTEGER)
+    @safe this(long value, mp_Type mp_type = mp_Type.NEGATIVE_INTEGER)
     {
         this(mp_type);
         via.integer = value;
@@ -113,7 +113,7 @@ struct mp_Object
 
 
     /// ditto
-    this(real value, mp_Type mp_type = mp_Type.FLOAT)
+    @safe this(real value, mp_Type mp_type = mp_Type.FLOAT)
     {
         this(mp_type);
         via.floating = value;
@@ -121,7 +121,7 @@ struct mp_Object
 
 
     /// ditto
-    this(mp_Object[] value, mp_Type mp_type = mp_Type.ARRAY)
+    @safe this(mp_Object[] value, mp_Type mp_type = mp_Type.ARRAY)
     {
         this(mp_type);
         via.array = value;
@@ -129,7 +129,7 @@ struct mp_Object
 
 
     /// ditto
-    this(mp_KeyValue[] value, mp_Type mp_type = mp_Type.MAP)
+    @safe this(mp_KeyValue[] value, mp_Type mp_type = mp_Type.MAP)
     {
         this(mp_type);
         via.map = value;
@@ -137,7 +137,7 @@ struct mp_Object
 
 
     /// ditto
-    this(ubyte[] value, mp_Type mp_type = mp_Type.RAW)
+    @safe this(ubyte[] value, mp_Type mp_type = mp_Type.RAW)
     {
         this(mp_type);
         via.raw = value;
@@ -156,7 +156,7 @@ struct mp_Object
      * NOTE:
      *  Current implementation uses cast.
      */
-    @property T as(T)() if (is(T == bool))
+    @property @safe T as(T)() if (is(T == bool))
     {
         if (type != mp_Type.BOOLEAN)
             onCastError();
@@ -166,7 +166,7 @@ struct mp_Object
 
 
     /// ditto
-    @property T as(T)() if (isIntegral!T)
+    @property @safe T as(T)() if (isIntegral!T)
     {
         if (type == mp_Type.POSITIVE_INTEGER)
             return cast(T)via.uinteger;
@@ -181,7 +181,7 @@ struct mp_Object
 
 
     /// ditto
-    @property T as(T)() if (isFloatingPoint!T)
+    @property @safe T as(T)() if (isFloatingPoint!T)
     {
         if (type != mp_Type.FLOAT)
             onCastError();
@@ -191,14 +191,14 @@ struct mp_Object
 
 
     /// ditto
-    @property T as(T)() if (is(Unqual!T == enum))
+    @property @safe T as(T)() if (is(Unqual!T == enum))
     {
         return cast(T)as!(OriginalType!T);
     }
 
 
     /// ditto
-    @property T as(T)() if (isArray!T)
+    @property @safe T as(T)() if (isArray!T)
     {
         if (type == mp_Type.NIL)
             return null;
@@ -225,7 +225,7 @@ struct mp_Object
 
 
     /// ditto
-    @property T as(T)() if (isAssociativeArray!T)
+    @property @safe T as(T)() if (isAssociativeArray!T)
     {
         alias typeof(T.init.keys[0])   K;
         alias typeof(T.init.values[0]) V;
@@ -261,7 +261,7 @@ struct mp_Object
      * Returns:
      *  converted value.
      */
-    @property T as(T, Args...)(Args args) if (is(T == class))
+    @property /* @safe */ T as(T, Args...)(Args args) if (is(T == class))
     {
         static if (!__traits(compiles, { T t; t.mp_unpack(this); }))
             static assert(false, T.stringof ~ " is not a MessagePackable object");
@@ -278,7 +278,7 @@ struct mp_Object
 
 
     /// ditto
-    @property T as(T)() if (is(T == struct))
+    @property /* @safe */ T as(T)() if (is(T == struct))
     {
         T obj;
 
@@ -339,7 +339,7 @@ struct mp_Object
     /**
      * Comparison for equality.
      */
-    bool opEquals(Tdummy = void)(ref const mp_Object other) const
+    @safe bool opEquals(Tdummy = void)(ref const mp_Object other) const
     {
         if (type != other.type)
             return false;
@@ -358,7 +358,7 @@ struct mp_Object
 
 
     /// ditto
-    bool opEquals(T : bool)(in T other) const
+    @safe bool opEquals(T : bool)(in T other) const
     {
         if (type != mp_Type.BOOLEAN)
             return false;
@@ -368,7 +368,7 @@ struct mp_Object
 
 
     /// ditto
-    bool opEquals(T : ulong)(in T other) const
+    @safe bool opEquals(T : ulong)(in T other) const
     {
         static if (__traits(isUnsigned, T)) {
             if (type != mp_Type.POSITIVE_INTEGER)
@@ -385,7 +385,7 @@ struct mp_Object
 
 
     /// ditto
-    bool opEquals(T : real)(in T other) const
+    @safe bool opEquals(T : real)(in T other) const
     {
         if (type != mp_Type.FLOAT)
             return false;
@@ -395,7 +395,7 @@ struct mp_Object
 
 
     /// ditto
-    bool opEquals(T : mp_Object[])(in T other) const
+    @safe bool opEquals(T : mp_Object[])(in T other) const
     {
         if (type != mp_Type.ARRAY)
             return false;
@@ -405,7 +405,7 @@ struct mp_Object
 
 
     /// ditto
-    bool opEquals(T : mp_KeyValue[])(in T other) const
+    @safe bool opEquals(T : mp_KeyValue[])(in T other) const
     {
         if (type != mp_Type.MAP)
             return false;
@@ -415,7 +415,7 @@ struct mp_Object
 
 
     /// ditto
-    bool opEquals(T : ubyte[])(in T other) const
+    @safe bool opEquals(T : ubyte[])(in T other) const
     {
         if (type != mp_Type.RAW)
             return false;
@@ -437,7 +437,7 @@ struct mp_KeyValue
     /**
      * Comparison for equality.
      */
-    bool opEquals(ref const mp_KeyValue other) const
+    @safe bool opEquals(ref const mp_KeyValue other) const
     {
         return key == other.key && value == other.value;
     }
@@ -447,7 +447,7 @@ struct mp_KeyValue
 private:
 
 
-void onCastError()
+@safe void onCastError()
 {
     throw new InvalidTypeException("Attempt to cast with another type");
 }

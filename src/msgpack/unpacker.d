@@ -66,7 +66,7 @@ version (D_Ddoc)
          * Returns:
          *  the reference of internal buffer.
          */
-        @property nothrow ubyte[] buffer();
+        @property @safe nothrow ubyte[] buffer();
 
 
         /**
@@ -75,7 +75,7 @@ version (D_Ddoc)
          * Params:
          *  target = new serialized buffer to deserialize.
          */
-        void feed(in ubyte[] target);
+        /* @safe */ void feed(in ubyte[] target);
 
 
         /**
@@ -85,34 +85,34 @@ version (D_Ddoc)
          * Params:
          *  size = the number of consuming.
          */
-        nothrow void bufferConsumed(in size_t size);
+        @safe nothrow void bufferConsumed(in size_t size);
 
 
         /**
          * Removes unparsed buffer.
          */
-        nothrow void removeUnparsed();
+        @safe nothrow void removeUnparsed();
 
 
         /**
          * Returns:
          *  the total size including unparsed buffer size.
          */
-        @property nothrow size_t size() const;
+        @property @safe nothrow size_t size() const;
 
 
         /**
          * Returns:
          *  the parsed size of buffer.
          */
-        @property nothrow size_t parsedSize() const;
+        @property @safe nothrow size_t parsedSize() const;
 
 
         /**
          * Returns:
          *  the unparsed size of buffer.
          */
-        @property nothrow size_t unparsedSize() const;
+        @property @safe nothrow size_t unparsedSize() const;
     }
 }
 else
@@ -128,13 +128,13 @@ else
 
 
       public:
-        @property nothrow ubyte[] buffer()
+        @property @safe nothrow ubyte[] buffer()
         {
             return buffer_;
         }
 
 
-        void feed(in ubyte[] target)
+        /* @safe */ void feed(in ubyte[] target)
         in
         {
             assert(target.length);
@@ -191,7 +191,7 @@ else
         }
 
 
-        nothrow void bufferConsumed(in size_t size)
+        @safe nothrow void bufferConsumed(in size_t size)
         {
             if (used_ + size > buffer_.length)
                 used_ = buffer_.length;
@@ -200,32 +200,32 @@ else
         }
 
 
-        nothrow void removeUnparsed()
+        @safe nothrow void removeUnparsed()
         {
             used_ = offset_;
         }
 
 
-        @property nothrow size_t size() const
+        @property @safe nothrow size_t size() const
         {
             return parsed_ - offset_ + used_;
         }
 
 
-        @property nothrow size_t parsedSize() const
+        @property @safe nothrow size_t parsedSize() const
         {
             return parsed_;
         }
 
 
-        @property nothrow size_t unparsedSize() const
+        @property @safe nothrow size_t unparsedSize() const
         {
             return used_ - offset_;
         }
 
 
       private:
-        void initializeBuffer(in ubyte[] target, in size_t bufferSize = 8192)
+        @safe void initializeBuffer(in ubyte[] target, in size_t bufferSize = 8192)
         {
             const size = target.length;
 
@@ -289,7 +289,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
      *  target     = byte buffer to deserialize
      *  bufferSize = size limit of buffer size
      */
-    this(in ubyte[] target, in size_t bufferSize = 8192)
+    @safe this(in ubyte[] target, in size_t bufferSize = 8192)
     {
         initializeBuffer(target, bufferSize);
     }
@@ -298,7 +298,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     /**
      * Clears some states for next deserialization.
      */
-    nothrow void clear()
+    @safe nothrow void clear()
     {
         parsed_ = 0;
     }
@@ -885,7 +885,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
      * Throws:
      *  UnpackException when doesn't read from buffer.
      */
-    void canRead(in size_t size, in size_t offset = Offset)
+    @safe void canRead(in size_t size, in size_t offset = Offset)
     {
         if (used_ - offset_ < size) {
             if (offset)
@@ -899,7 +899,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     /*
      * Reads value from buffer and advances offset.
      */
-    ubyte read()
+    @safe ubyte read()
     {
         return buffer_[offset_++];
     }
@@ -908,7 +908,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     /*
      * Reads value from buffer and advances offset.
      */
-    ubyte[] read(in size_t size)
+    @safe ubyte[] read(in size_t size)
     {
         auto result = buffer_[offset_..offset_ + size];
 
@@ -921,7 +921,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     /*
      * Rollbacks offset and throws exception.
      */
-    void rollback(in size_t size)
+    @safe void rollback(in size_t size)
     {
         offset_ -= size + Offset;
         onInvalidType();
@@ -1117,7 +1117,7 @@ struct Unpacked
      * Params:
      *  object = a deserialized object.
      */
-    this(mp_Object object)
+    @safe this(mp_Object object)
     {
         this.object = object;
     }
@@ -1129,7 +1129,7 @@ struct Unpacked
      * Returns:
      *  true if there are no more elements to be iterated.
      */
-    @property nothrow bool empty() const  // std.array.empty isn't nothrow function
+    @property @safe nothrow bool empty() const  // std.array.empty isn't nothrow function
     {
         return (object.type == mp_Type.ARRAY) && !object.via.array.length;
     }
@@ -1141,7 +1141,7 @@ struct Unpacked
      * Returns:
      *  the deserialized $(D mp_Object).
      */
-    @property ref mp_Object front()
+    @property /* @safe */ ref mp_Object front()
     {
         return object.via.array.front;
     }
@@ -1150,7 +1150,7 @@ struct Unpacked
     /**
      * Range primitive operation that advances the range to its next element.
      */
-    void popFront()
+    /* @safe */ void popFront()
     {
         object.via.array.popFront();
     }
@@ -1260,7 +1260,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
      *  target     = byte buffer to deserialize
      *  bufferSize = size limit of buffer size
      */
-    this(in ubyte[] target, in size_t bufferSize = 8192)
+    @safe this(in ubyte[] target, in size_t bufferSize = 8192)
     {
         initializeBuffer(target, bufferSize);
         initializeContext();
@@ -1273,7 +1273,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
      * Returns:
      *  the $(D Unpacked) object contains deserialized object.
      */
-    @property Unpacked unpacked()
+    @property @safe Unpacked unpacked()
     {
         return Unpacked(context_.stack[0].object);
     }
@@ -1282,7 +1282,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
     /**
      * Clears some states for next deserialization.
      */
-    nothrow void clear()
+    @safe nothrow void clear()
     {
         initializeContext();
 
@@ -1310,7 +1310,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
      * Returns:
      *  the $(D Unpacked) object contains deserialized object.
      */
-    Unpacked purge()
+    @safe Unpacked purge()
     {
         auto result = Unpacked(context_.stack[0].object);
 
@@ -1621,7 +1621,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
     /*
      * initializes internal stack environment.
      */
-    nothrow void initializeContext()
+    @safe nothrow void initializeContext()
     {
         context_.state        = State.HEADER;
         context_.trail        = 0;
@@ -1642,7 +1642,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
  *  a $(D Unpacker) object instantiated and initialized according to the arguments.
  *  Stream deserializer if $(D_PARAM isStream) is true, otherwise direct-conversion deserializer.
  */
-Unpacker!(Type) unpacker(UnpackerType Type = UnpackerType.STREAM)(in ubyte[] target, in size_t bufferSize = 8192)
+@safe Unpacker!(Type) unpacker(UnpackerType Type = UnpackerType.STREAM)(in ubyte[] target, in size_t bufferSize = 8192)
 {
     return typeof(return)(target, bufferSize);
 }
@@ -1694,7 +1694,7 @@ private:
  *  object = the object to set
  *  value  = the content to set
  */
-void callbackUInt(ref mp_Object object, ulong value)
+@safe void callbackUInt(ref mp_Object object, ulong value)
 {
     object.type         = mp_Type.POSITIVE_INTEGER;
     object.via.uinteger = value;
@@ -1702,7 +1702,7 @@ void callbackUInt(ref mp_Object object, ulong value)
 
 
 /// ditto
-void callbackInt(ref mp_Object object, long value)
+@safe void callbackInt(ref mp_Object object, long value)
 {
     object.type        = mp_Type.NEGATIVE_INTEGER;
     object.via.integer = value;
@@ -1710,7 +1710,7 @@ void callbackInt(ref mp_Object object, long value)
 
 
 /// ditto
-void callbackFloat(ref mp_Object object, real value)
+@safe void callbackFloat(ref mp_Object object, real value)
 {
     object.type         = mp_Type.FLOAT;
     object.via.floating = value;
@@ -1718,7 +1718,7 @@ void callbackFloat(ref mp_Object object, real value)
 
 
 /// ditto
-void callbackRaw(ref mp_Object object, ubyte[] raw)
+@safe void callbackRaw(ref mp_Object object, ubyte[] raw)
 {
     object.type    = mp_Type.RAW;
     object.via.raw = raw;
@@ -1744,14 +1744,14 @@ void callbackMap(ref mp_Object object, size_t length)
 
 
 /// ditto
-void callbackNil(ref mp_Object object)
+@safe void callbackNil(ref mp_Object object)
 {
     object.type = mp_Type.NIL;
 }
 
 
 /// ditto
-void callbackBool(ref mp_Object object, bool value)
+@safe void callbackBool(ref mp_Object object, bool value)
 {
     object.type        = mp_Type.BOOLEAN;
     object.via.boolean = value;
@@ -1810,7 +1810,7 @@ unittest
 /*
  * A callback for type-mismatched error in deserialization process.
  */
-void onInvalidType()
+@safe void onInvalidType()
 {
     throw new InvalidTypeException("Attempt to unpack with non-compatible type");
 }
@@ -1819,7 +1819,7 @@ void onInvalidType()
 /*
  * A callback for finding unknown-format in deserialization process.
  */
-void onUnknownType()
+@safe void onUnknownType()
 {
     throw new UnpackException("Unknown type");
 }

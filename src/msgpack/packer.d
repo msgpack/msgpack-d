@@ -55,7 +55,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
      * Params:
      *  buffer = the buffer to write.
      */
-    this(Buffer buffer)
+    @safe this(Buffer buffer)
     {
         buffer_ = buffer;
     }
@@ -68,12 +68,12 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
      *  the buffer.
      */
     static if (is(Unqual!Buffer == struct)) {
-        @property nothrow ref Buffer buffer()
+        @property @safe nothrow ref Buffer buffer()
         {
             return buffer_;
         }
     } else {
-        @property nothrow Buffer buffer()
+        @property @safe nothrow Buffer buffer()
         {
             return buffer_;
         }
@@ -482,7 +482,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
      * MessagePack doesn't define $(D_KEYWORD real) type format.
      * Don't use this method if you communicate with other languages.
      *
-     * Transfer pack!(double) if $(D_KEYWORD real) type on your environment equals $(D_KEYWORD double) type.
+     * Transfers pack!(double) if $(D_KEYWORD real) type on your environment equals $(D_KEYWORD double) type.
      *
      * Params:
      *  value = the content to serialize.
@@ -699,7 +699,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
  * Returns:
  *  a $(D Packer) object instantiated and initialized according to the arguments.
  */
-Packer!(Buffer) packer(Buffer)(Buffer buffer)
+@safe Packer!(Buffer) packer(Buffer)(Buffer buffer)
 {
     return typeof(return)(buffer);
 }

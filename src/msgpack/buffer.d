@@ -88,7 +88,7 @@ struct VRefBuffer
      *  refSize   = the threshold of writing value or stores reference.
      *  chunkSize = the default size of chunk for allocation.
      */
-    this(in size_t refSize = 32, in size_t chunkSize = 8192)
+    @safe this(in size_t refSize = 32, in size_t chunkSize = 8192)
     {
         RefSize   = refSize;
         ChunkSize = chunkSize;
@@ -105,7 +105,7 @@ struct VRefBuffer
      * Returns:
      *  the non-contiguous copied contents.
      */
-    @property nothrow ubyte[] data()
+    @property @safe nothrow ubyte[] data()
     {
         ubyte[] result;
 
@@ -122,7 +122,7 @@ struct VRefBuffer
      * Returns:
      *  the array of iovec struct that stores references.
      */
-    @property nothrow iovec[] vector()
+    @property @safe nothrow iovec[] vector()
     {
         return vecList_;
     }
@@ -224,7 +224,7 @@ struct VRefBuffer
  * Returns:
  *  a $(D VRefBuffer) object instantiated and initialized according to the arguments.
  */
-VRefBuffer vrefBuffer(in size_t refSize = 32, in size_t chunkSize = 8192)
+@safe VRefBuffer vrefBuffer(in size_t refSize = 32, in size_t chunkSize = 8192)
 {
     return typeof(return)(refSize, chunkSize);
 }
@@ -430,12 +430,12 @@ class DeflateFilter(Buffer) if (isOutputRange!(Buffer, ubyte[]))
      *  the buffer.
      */
     static if (is(Unqual!Buffer == struct)) {
-        @property nothrow ref Buffer buffer()
+        @property @safe nothrow ref Buffer buffer()
         {
             return buffer_;
         }
     } else {
-        @property nothrow Buffer buffer()
+        @property @safe nothrow Buffer buffer()
         {
             return buffer_;
         }
@@ -598,12 +598,12 @@ class DeflateFilter(Buffer) if (isInputRange!(Buffer))
      *  the buffer.
      */
     static if (is(Unqual!Buffer == struct)) {
-        @property nothrow ref Buffer buffer()
+        @property @safe nothrow ref Buffer buffer()
         {
             return buffer_;
         }
     } else {
-        @property nothrow Buffer buffer()
+        @property @safe nothrow Buffer buffer()
         {
             return buffer_;
         }
