@@ -10,8 +10,7 @@ import std.array;
 import std.concurrency;
 import std.stdio;
 
-import msgpack.msgpack;
-import msgpack.unpacker;
+import std.msgpack;
 
 
 void deserializer(Tid tid)
@@ -50,7 +49,7 @@ void main()
     while (!packed.empty) {
         auto limit = packed.length >= 10 ? 10 : packed.length;
 
-        send(tid, packed[0..limit]);
+        send(tid, cast(shared ubyte[])packed[0..limit]);
         packed  = packed[limit..$];
     }
 

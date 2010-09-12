@@ -6,8 +6,7 @@
 
 import std.stdio, std.math;
 
-import msgpack.msgpack;
-import msgpack.util;
+import std.msgpack;
 
 
 enum Attr : ubyte
@@ -32,7 +31,7 @@ void main()
 {
     User user = User("Foo", 20, Attr.B), other;
 
-    other.mp_unpack(unpack(pack(user)));
+    other.fromMsgpack(unpack(pack(user)));
 
     writeln("name: ", other.name, "(", other.age, ", ", other.attr, ")");
 
@@ -91,21 +90,21 @@ class BTree(Key, Data)
 
         this(in uint num) { low.length = child.length = num; }
 
-        void mp_pack(Packer)(ref Packer packer) const
+        void toMsgpack(Packer)(ref Packer packer) const
         {
             if (type == NodeType.Internal)
-                packer.packArray(4).pack(childs, low.length, low, child);
+                packer.packArray(childs, low.length, low, child);
             else
-                packer.packArray(2).pack(key, data);
+                packer.packArray(key, data);
         }
 
-        void mp_unpack(ref Unpacker!(UnpackerType.DIRECT) unpacker)
+        void fromMsgpack(ref Unpacker!(UnpackerType.direct) unpacker)
         {
-            if (unpacker.unpackArray() == 4) {
+            if (unpacker.beginArray() == 4) {
                 size_t max;
 
                 unpacker.unpack(childs, max, low);
-                child.length = unpacker.unpackArray();
+                child.length = unpacker.beginArray();
                 foreach (i; 0..child.length)
                     unpacker.unpack(child[i], max);
                 low.length = child.length = max;
@@ -410,12 +409,12 @@ class BTree(Key, Data)
 
     // for MessagePack
 
-    void mp_pack(Packer)(ref Packer packer) const
+    void toMsgpack(Packer)(ref Packer packer) const
     {
         packer.pack(root);
     }
 
-    void mp_unpack(ref Unpacker!(UnpackerType.DIRECT) unpacker)
+    void fromMsgpack(ref Unpacker!(UnpackerType.direct) unpacker)
     {
         unpacker.unpack(root, MAX_CHILD);
     }

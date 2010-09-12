@@ -4,20 +4,19 @@
  * Serializer and Stream Deserializer usage
  */
 
+import std.array;
 import std.stdio;
 
-import msgpack.buffer;
-import msgpack.packer;
-import msgpack.unpacker;
+import std.msgpack;
 
 
 void main()
 {
-    auto packer = packer(SimpleBuffer());
+    auto packer = packer(appender!(ubyte[]));
 
-    packer.packArray(5).packNil().packTrue().pack("Hi!", -1, [1, 2]);
+    packer.packArray(null, true, "Hi!", -1, [1, 2]);
 
-    auto unpacker = unpacker(packer.buffer.data);
+    auto unpacker = unpacker(packer.stream.data);
 
     if (unpacker.execute()) {
         foreach (obj; unpacker.purge())

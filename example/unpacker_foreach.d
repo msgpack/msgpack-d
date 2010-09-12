@@ -6,8 +6,7 @@
 
 import std.stdio;
 
-import msgpack.msgpack;
-import msgpack.unpacker;
+import std.msgpack;
 
 
 void main()
@@ -23,11 +22,11 @@ void main()
     auto unpacker = unpacker(test1);
 
     foreach (unpacked; unpacker) {
-        if (unpacked.type == mp_Type.ARRAY) {
+        if (unpacked.type == MPType.array) {
             foreach (obj; unpacked) {
                 switch (obj.type) {
-                case mp_Type.POSITIVE_INTEGER: writeln(obj.as!(uint)); break;
-                case mp_Type.FLOAT:            writeln(obj.as!(real)); break;
+                case MPType.unsigned: writeln(obj.as!(uint)); break;
+                case MPType.floating: writeln(obj.as!(real)); break;
                 defalut:
                     throw new Exception("Unknown type");
                 }

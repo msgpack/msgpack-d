@@ -21,7 +21,9 @@
  * -----
  *
  * See_Also:
- *  $(LINK2 http://msgpack.org/, The MessagePack Project)
+ *  $(LINK2 http://msgpack.org/, The MessagePack Project)$(BR)
+ *  $(LINK2 http://redmine.msgpack.org/projects/msgpack/wiki/FormatDesign, MessagePack Design concept)$(BR)
+ *  $(LINK2 http://redmine.msgpack.org/projects/msgpack/wiki/FormatSpec, MessagePack data format)
  *
  * Copyright: Copyright Masahiro Nakagawa 2010.
  * License:   <a href="http://www.boost.org/LICENSE_1_0.txt">Boost License 1.0</a>.
@@ -35,13 +37,11 @@
 module std.msgpack;
 
 import std.array;
+import std.exception;
 import std.range;
 import std.stdio;
 import std.traits;
 import std.typetuple;
-import std.zlib : ZlibException;  // avoiding Z_* symbols conflict
-
-import etc.c.zlib;  // for DeflateFilter
 
 // for VRefBuffer
 version(Posix)
@@ -70,6 +70,12 @@ else
     import core.sys.posix.arpa.inet;
 }
 
+static if (real.sizeof == double.sizeof) {
+    // for 80bit real inter-operation on non-x86 CPU
+    version = NonX86;
+
+    import std.numeric;
+}
 
 version(unittest) import std.file, std.typecons, std.c.string;
 
@@ -81,17 +87,11 @@ version(unittest) import std.file, std.typecons, std.c.string;
 
 
 /**
- * This alias provides clear name for simple buffer.
- */
-alias Appender!(ubyte[]) SimpleBuffer;
-
-
-/**
- * $(D VRefBuffer) is a zero copy buffer for more efficient
+ * $(D VRefBuffer) is a zero copy buffer for more efficient serialization
  *
  * Example:
  * -----
- * auto packer = packer(vrefBuffer());
+ * auto packer = packer(vrefBuffer(16));  // threshold is 16
  *
  * // packs data
  *
@@ -99,17 +99,22 @@ alias Appender!(ubyte[]) SimpleBuffer;
  * -----
  *
  * See_Also:
- *  $(LINK http://msgpack.sourceforge.net/doc:introduction#zerocopy_serialization)
+ *  $(LINK http://redmine.msgpack.org/projects/msgpack/wiki/Introduction)
  */
 struct VRefBuffer
 {
   private:
-    immutable size_t RefSize, ChunkSize;
+    static struct Chunk
+    {
+        ubyte[] data;  // storing serialized value
+        size_t  used;  // used size of data
+    }
+
+    immutable size_t Threshold, ChunkSize;
 
     // for putCopy
-    ubyte[][] chunk_;  // memory chunk for buffer
-    size_t[]  uList_;  // used size list for chunk
-    size_t    index_;  // index for cunrrent chunk
+    Chunk[] chunks_;  // memory chunk for buffer
+    size_t  index_;   // index for cunrrent chunk
 
     // for putRef
     iovec[] vecList_;  // referece to large data or copied data.
@@ -120,32 +125,33 @@ struct VRefBuffer
      * Constructs a buffer.
      *
      * Params:
-     *  refSize   = the threshold of writing value.
+     *  threshold = the threshold of writing value or stores reference.
      *  chunkSize = the default size of chunk for allocation.
      */
-    @safe this(in size_t refSize = 32, in size_t chunkSize = 8192)
+    @safe
+    this(in size_t threshold = 32, in size_t chunkSize = 8192)
     {
-        RefSize   = refSize;
+        Threshold = threshold;
         ChunkSize = chunkSize;
 
-        uList_.length = 1;
-        chunk_.length = 1;
-        chunk_[index_].length = chunkSize;
+        chunks_.length = 1;
+        chunks_[index_].data.length = chunkSize;
     }
 
 
     /**
-     * Returns the buffer contents excluding references.
+     * Returns the buffer contents that excluding references.
      *
      * Returns:
      *  the non-contiguous copied contents.
      */
-    @property @safe nothrow ubyte[] data()
+    @property @safe
+    nothrow ubyte[] data()
     {
         ubyte[] result;
 
-        foreach (i, data; chunk_)
-            result ~= data[0..uList_[i]];
+        foreach (ref chunk; chunks_)
+            result ~= chunk.data[0..chunk.used];
 
         return result;
     }
@@ -157,18 +163,22 @@ struct VRefBuffer
      * Returns:
      *  the array of iovec struct that stores references.
      */
-    @property @safe nothrow iovec[] vector()
+    @property @safe
+    nothrow ref iovec[] vector()
     {
         return vecList_;
     }
 
 
     /**
-     * Writes $(D_PARAM value) to buffer.
+     * Writes the argument to buffer and stores the reference of writed content 
+     * if the argument size is smaller than threshold,
+     * otherwise stores the reference of argument directly.
      *
      * Params:
      *  value = the content to write.
      */
+    @safe
     void put(in ubyte value)
     {
         ubyte[1] values = [value];
@@ -176,43 +186,40 @@ struct VRefBuffer
     }
 
 
-    /**
-     * Writes $(D_PARAM values) to buffer if $(D_PARAM values) size is smaller
-     * than RefSize, otherwise stores reference of $(D_PARAM values).
-     *
-     * Params:
-     *  values = the content to write.
-     */
-    void put(in ubyte[] values)
+    /// ditto
+    @safe
+    void put(in ubyte[] value)
     {
-        if (values.length < RefSize)
-            putCopy(values);
+        if (value.length < Threshold)
+            putCopy(value);
         else
-            putRef(values);
+            putRef(value);
     }
 
 
   private:
-    /**
-     * Stores reference of $(D_PARAM values).
+    /*
+     * Stores the reference of $(D_PARAM value).
      *
      * Params:
-     *  values = the content to write.
+     *  value = the content to write.
      */
-    void putRef(in ubyte[] values)
+    @trusted
+    void putRef(in ubyte[] value)
     {
         vecList_.length += 1;
-        vecList_[$ - 1]  = iovec(cast(void*)values.ptr, values.length);
+        vecList_[$ - 1]  = iovec(cast(void*)value.ptr, value.length);
     }
 
 
-    /**
-     * Writes $(D_PARAM values) to buffer and appends to reference.
+    /*
+     * Writes $(D_PARAM value) to buffer and appends to its reference.
      *
      * Params:
-     *  values = the contents to write.
+     *  value = the contents to write.
      */
-    void putCopy(in ubyte[] values)
+    @safe
+    void putCopy(in ubyte[] value)
     {
         /*
          * Helper for expanding new space.
@@ -222,22 +229,21 @@ struct VRefBuffer
             const newSize = size < ChunkSize ? ChunkSize : size;
 
             index_++;
-            uList_.length += 1;
-            chunk_.length += 1;
-            chunk_[index_].length = newSize;
+            chunks_.length = 1;
+            chunks_[index_].data.length = newSize;
         }
 
-        const size = values.length;
+        const size = value.length;
 
         // lacks current chunk?
-        if (chunk_[index_].length - uList_[index_] < size)
+        if (chunks_[index_].data.length - chunks_[index_].used < size)
             expand(size);
 
-        const base = uList_[index_];                     // start index
-        auto  data = chunk_[index_][base..base + size];  // chunk to write
+        const base = chunks_[index_].used;                     // start index
+        auto  data = chunks_[index_].data[base..base + size];  // chunk to write
 
-        data[]          = values;
-        uList_[index_] += size;
+        data[] = value;
+        chunks_[index_].used += size;
 
         // Optimization for avoiding iovec allocation.
         if (vecList_.length && data.ptr == (vecList_[$ - 1].iov_base +
@@ -253,20 +259,24 @@ struct VRefBuffer
  * Helper for $(D VRefBuffer) construction.
  *
  * Params:
- *  refSize   = the threshold of writing value.
+ *  threshold = the threshold of writing value or stores reference.
  *  chunkSize = the default size of chunk for allocation.
  *
  * Returns:
  *  a $(D VRefBuffer) object instantiated and initialized according to the arguments.
  */
-@safe VRefBuffer vrefBuffer(in size_t refSize = 32, in size_t chunkSize = 8192)
+@safe
+VRefBuffer vrefBuffer(in size_t threshold = 32, in size_t chunkSize = 8192)
 {
-    return typeof(return)(refSize, chunkSize);
+    return typeof(return)(threshold, chunkSize);
 }
 
 
 unittest
 {
+    static assert(isOutputRange!(VRefBuffer, ubyte) &&
+                  isOutputRange!(VRefBuffer, ubyte[]));
+
     auto buffer = vrefBuffer(2, 4);
 
     ubyte[] tests = [1, 2];
@@ -288,533 +298,6 @@ unittest
 }
 
 
-/**
- * $(D BinaryFileWriter) is a wrapper for $(LINK2 http://www.digitalmars.com/d/2.0/phobos/std_stdio.html#File, File)
- */
-struct BinaryFileWriter
-{
-  private:
-    File         file_;     // stream to write
-    bool         doCache_;  // indicates whether caches content
-    SimpleBuffer cache_;    // buffer for cache
-
-
-  public:
-    /**
-     * Constructs a writer.
-     *
-     * Params:
-     *  file    = the $(D File) to output.
-     *  doCache = caching content if true.
-     */
-    this(ref File file, bool doCache = false)
-    {
-        file_    = file;
-        doCache_ = doCache;
-    }
-
-
-    /**
-     * Constructs a writer and opens $(D_PARAM name) file.
-     *
-     * Params:
-     *  name    = filename to $(D File) construction.
-     *  doCache = caching content if true.
-     */
-    this(in string name, bool doCache = false)
-    {
-        file_    = File(name, "wb");
-        doCache_ = doCache;
-    }
-
-
-    /**
-     * Forwards to cache contents.
-     *
-     * Returns:
-     *  the cache contents if doCache is true, otherwise null.
-     */
-    @property /* nothrow */ ubyte[] data() // data method of Appender isn't nothrow
-    {
-        return doCache_ ? cache_.data : null;
-    }
-
-
-    /**
-     * Closes $(D File) object.
-     */
-    void close()
-    {
-        file_.close();
-    }
-
-
-    /**
-     * Writes $(D_PARAM value) to buffer.
-     *
-     * Params:
-     *  value = the content to write.
-     *
-     * Throws:
-     *  $(D StdioException) if file closed.
-     */
-    void put(in ubyte value)
-    {
-        ubyte[1] values = [value];
-        put(values);
-    }
-
-
-    /// ditto
-    void put(in ubyte[] values)
-    {
-        if (doCache_)
-            cache_.put(values);
-
-        if (file_.isOpen)
-            file_.rawWrite(values);
-        else
-            throw new StdioException("File has been closed", 5);  // EIO
-    }
-}
-
-
-unittest
-{
-    auto    name  = "deleteme";
-    ubyte[] tests = [1, 2];
-
-    { // output to name file
-        auto writer = BinaryFileWriter(name, true);
-
-        foreach (v; tests)
-            writer.put(v);
-        writer.put(tests);
-
-        writer.close();
-
-        assert(writer.data == tests ~ tests);
-    }
-    { // input from name file
-        auto input  = File(name, "rb");
-        auto result = new ubyte[](4);
-
-        input.rawRead(result);
-
-        assert(result == tests ~ tests);
-    }
-
-    remove(name);
-}
-
-
-/**
- * This OutputRange filter compresses data using Deflate algorithm.
- *
- * Example:
- * -----
- * auto deflater = deflateFilter(BinaryFileWriter("deflated.mpac"));
- * auto packer   = packer(deflater);
- *
- * packer.pack(data);
- *
- * deflater.flush();
- * deflater.buffer.close();
- * -----
- *
- * This implementation uses etc.c.zlib module.
- */
-class DeflateFilter(Buffer) if (isOutputRange!(Buffer, ubyte[]))
-{
-  private:
-    enum TempSize = 128;  // for temporary buffer
-
-    Buffer   buffer_;  // buffer to output
-    z_stream stream_;  // zlib-stream for deflation
-
-
-  public:
-    /**
-     * Constructs a buffer.
-     *
-     * Params:
-     *  buffer     = the buffer to output.
-     *  level      = Compression level for deflation.
-     *
-     * Throws:
-     *  $(D ZlibException) if initialization of zlib-stream failed.
-     */
-    this(Buffer buffer, in int level = Z_DEFAULT_COMPRESSION)
-    in
-    {
-        assert(Z_DEFAULT_COMPRESSION <= level && level <= Z_BEST_COMPRESSION);
-    }
-    body
-    {
-        check(deflateInit(&stream_, level));
-
-        buffer_ = buffer;
-    }
-
-
-    /**
-     * Ends zlib-stream.
-     */
-    ~this()
-    {
-        deflateEnd(&stream_);
-    }
-
-
-    /**
-     * Forwards to buffer.
-     *
-     * Returns:
-     *  the buffer.
-     */
-    static if (is(Unqual!Buffer == struct)) {
-        @property @safe nothrow ref Buffer buffer()
-        {
-            return buffer_;
-        }
-    } else {
-        @property @safe nothrow Buffer buffer()
-        {
-            return buffer_;
-        }
-    }
-
-
-    /**
-     * Writes $(D_PARAM value) to buffer with compression.
-     *
-     * Params:
-     *  value = the content to compress.
-     *
-     * Throws:
-     *  $(D ZlibException) if deflation failed.
-     */
-    void put(in ubyte value)
-    {
-        ubyte[1] values = [value];
-        put(values);
-    }
-
-
-    /// ditto
-    void put(in ubyte[] values)
-    in
-    {
-        assert(values.length);
-    }
-    body
-    {
-        ubyte[]         result;
-        ubyte[TempSize] temp;
-
-        // set input
-        stream_.next_in  = cast(ubyte*)values.ptr;
-        stream_.avail_in = values.length;
-
-        do {
-            // set output
-            stream_.next_out  = temp.ptr;
-            stream_.avail_out = TempSize;
-
-            check(deflate(&stream_, Z_NO_FLUSH));
-
-            if (TempSize - stream_.avail_out)  // for performance(zlib has internal buffer)
-                result ~= temp[0..TempSize - stream_.avail_out];
-        } while (stream_.avail_in > 0)
-
-        if (result.length)  // avoids function call
-            buffer_.put(result);
-    }
-
-
-    /**
-     * Flushes the zlib-stream.
-     */
-    void flush()
-    {
-        ubyte[]         result;
-        ubyte[TempSize] temp;
-
-        while (true) {
-            stream_.next_out  = temp.ptr;
-            stream_.avail_out = TempSize;
-
-            auto status = deflate(&stream_, Z_FINISH);
-
-            switch (status) {
-            case Z_STREAM_END:
-                buffer_.put(result ~ temp[0..TempSize - stream_.avail_out]);
-                return;
-            case Z_OK:
-                result ~= temp;
-                break;
-            default:
-                check(status);
-            }
-        }
-    }
-
-
-    /**
-     * Resets the zlib-stream.
-     *
-     * Throws:
-     *  $(D ZlibException) if resets of zlib-stream failed.
-     */
-    void reset()
-    {
-        check(deflateReset(&stream_));
-    }
-
-
-  private:
-    /**
-     * Checks stream status.
-     *
-     * Params:
-     *  status = return code from zlib function.
-     *
-     * Throws:
-     *  $(D ZlibException) if $(D_PARAM status) isn't $(D Z_OK).
-     */
-    void check(in int status)
-    {
-        if (status != Z_OK) {
-            deflateEnd(&stream_);
-
-            throw new ZlibException(status);
-        }
-    }
-}
-
-
-/**
- * This InputRange filter uncompresses data using Deflate algorithm.
- *
- * Example:
- * -----
- * ubyte[] buffer;
- * auto inflater = deflateFilter(ByChunk(File("deflated.mpac", "rb"), 128));
- *
- * foreach (inflated; inflater)
- *     buffer ~= inflated;
- * -----
- *
- * This implementation uses etc.c.zlib module.
- */
-class DeflateFilter(Buffer) if (isInputRange!(Buffer))
-{
-  private:
-    enum TempSize = 128;  // for temporary buffer
-
-    Buffer   buffer_;  // buffer to input
-    z_stream stream_;  // zlib-stream for inflation
-
-
-  public:
-    /**
-     * Constructs a buffer.
-     *
-     * Params:
-     *  buffer = the buffer to input
-     *
-     * Throws:
-     *  $(D ZlibException) if initialization of zlib-stream failed.
-     */
-    this(Buffer buffer)
-    {
-        check(inflateInit(&stream_));
-
-        buffer_ = buffer;
-    }
-
-
-    /**
-     * Ends zlib-stream.
-     */
-    ~this()
-    {
-        inflateEnd(&stream_);
-    }
-
-
-    /**
-     * Forwards to buffer.
-     *
-     * Returns:
-     *  the buffer.
-     */
-    static if (is(Unqual!Buffer == struct)) {
-        @property @safe nothrow ref Buffer buffer()
-        {
-            return buffer_;
-        }
-    } else {
-        @property @safe nothrow Buffer buffer()
-        {
-            return buffer_;
-        }
-    }
-
-
-    /**
-     * Range primitive operation that checks iteration state.
-     *
-     * Returns:
-     *  true if there are no more elements to be iterated.
-     */
-    @property bool empty()
-    {
-        return buffer_.empty;
-    }
-
-
-    /**
-     * Range primitive operation that returns the currently iterated element.
-     *
-     * Returns:
-     *  the uncompressed data.
-     */
-    @property ubyte[] front()
-    {
-        ubyte[]         result, data = buffer_.front;
-        ubyte[TempSize] temp;
-
-        // set input
-        stream_.next_in  = data.ptr;
-        stream_.avail_in = data.length;
-
-        do {
-            // set output
-            stream_.next_out  = temp.ptr;
-            stream_.avail_out = TempSize;
-
-            auto status = inflate(&stream_, Z_SYNC_FLUSH);
-            if (status != Z_STREAM_END)
-                check(status);
-
-            result ~= temp[0..TempSize - stream_.avail_out];
-        } while (stream_.avail_in > 0)
-
-        return result;
-    }
-
-
-    /**
-     * Range primitive operation that advances the range to its next element.
-     */
-    void popFront()
-    { 
-        buffer_.popFront();
-    }
-
-
-    /**
-     * Resets the zlib-stream.
-     *
-     * Throws:
-     *  $(D ZlibException) if resets of zlib-stream failed.
-     */
-    void reset()
-    {
-        check(inflateReset(&stream_));
-    }
-
-
-  private:
-    /**
-     * Checks stream status.
-     *
-     * Params:
-     *  status = return code from zlib function.
-     *
-     * Throws:
-     *  $(D ZlibException) if $(D_PARAM status) isn't $(D Z_OK).
-     */
-    void check(in int status)
-    {
-        if (status != Z_OK) {
-            inflateEnd(&stream_);
-
-            throw new ZlibException(status);
-        }
-    }
-}
-
-
-/**
- * Helper for $(D DeflateFilter) construction.
- *
- * Creates compression filter if $(D_PARAM Buffer) is OutputRange, otherwise uncompression filter.
- *
- * Params:
- *  buffer = the buffer to output / input
- *  level  = Compression level for compression.
- *
- * Returns:
- *  a $(D DeflateFilter) object instantiated and initialized according to the arguments.
- */
-DeflateFilter!(Buffer) deflateFilter(Buffer)(Buffer buffer, lazy int level = Z_DEFAULT_COMPRESSION)
-{
-    static if (isOutputRange!(Buffer, ubyte[]))
-        return new typeof(return)(buffer, level);
-    else
-        return new typeof(return)(buffer);
-}
-
-
-unittest
-{
-    static struct PartialData
-    {
-        ubyte[] data, now;
-
-        this(ubyte[] src) { data = src; popFront(); }
-
-        @property bool empty() { return data.empty; }
-
-        @property ubyte[] front() { return now; }
-
-        void popFront()
-        { 
-            auto size = data.length > 4 ? 4 : data.length;
-
-            now  = data[0..size];
-            data = data[size..$];
-        }
-    }
-
-    void check(in int status)
-    {
-        if (status != Z_OK && status != Z_STREAM_END)
-            throw new ZlibException(status);
-    }
-
-    ubyte[] result, tests = [1, 2];
-
-    // deflation
-    scope deflater = deflateFilter(SimpleBuffer());
-
-    foreach (v; tests)
-        deflater.put(v);
-    deflater.put(tests);
-    deflater.flush();
-
-    // inflation
-    scope inflater = deflateFilter(PartialData(deflater.buffer.data));
-
-    foreach (inflated; inflater)
-        result ~= inflated;
-
-    assert(result == tests ~ tests);
-}
-
-
 // Serializing routines
 
 
@@ -823,372 +306,154 @@ unittest
  *
  * Example:
  * -----
- * auto packer = packer(SimpleBuffer());
+ * auto packer = packer(Appender!(ubyte[])());
  *
- * packer.packArray(4);  // sets array length
- * packer.packFalse();   // false
- * packer.pack(100);     // 100   of int
- * packer.pack(1e-10);   // 1e-10 of double
- * packer.packNil();     // null
- *
- * // or packer.packArray(4).pack(false, 100, 1e-10).packNil();
+ * packer.packArray(false, 100, 1e-10, null);
  *
  * stdout.rawWrite(packer.buffer.data);
  * -----
+ *
+ * NOTE:
+ *  Current implementation can't deal with a circular reference.
+ *  If you try to serialize a object that has circular reference, runtime raises 'Stack Overflow'.
  */
-struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer, ubyte[]))
+struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream, ubyte[]))
 {
   private:
     enum size_t Offset = 1;  // type-information offset
 
-    Buffer                          buffer_;  // the buffer to write
-    ubyte[Offset + 1 + real.sizeof] store_;   // stores serialized value
+    Stream                   stream_;  // the stream to write
+    ubyte[Offset + RealSize] store_;   // stores serialized value
 
 
   public:
     /**
-     * Constructs a packer with $(D_PARAM buffer).
+     * Constructs a packer with $(D_PARAM stream).
      *
      * Params:
-     *  buffer = the buffer to write.
+     *  stream = the stream to write.
      */
-    @safe this(Buffer buffer)
+    @safe
+    this(Stream stream)
     {
-        buffer_ = buffer;
+        stream_ = stream;
     }
 
 
     /**
-     * Forwards to buffer.
+     * Forwards to stream.
      *
      * Returns:
-     *  the buffer.
+     *  the stream.
      */
-    static if (is(Unqual!Buffer == struct)) {
-        @property @safe nothrow ref Buffer buffer()
-        {
-            return buffer_;
-        }
-    } else {
-        @property @safe nothrow Buffer buffer()
-        {
-            return buffer_;
-        }
+    @property @safe
+    nothrow ref Stream stream()
+    {
+        return stream_;
     }
 
 
     /**
-     * Serializes $(D_PARAM value) and writes to buffer.
+     * Serializes argument and writes to stream.
+     *
+     * If the argument is the pointer type, dereferences the pointer and serializes pointed value.
+     * -----
+     * int  a = 10;
+     * int* b = &b;
+     *
+     * packer.pack(b);  // serializes 10, not address of a
+     * -----
+     * Serializes nil if the argument of nullable type is null.
+     *
+     * NOTE:
+     *  MessagePack doesn't define $(D_KEYWORD real) type format.
+     *  Don't serialize $(D_KEYWORD real) if you communicate with other languages.
+     *  Transfer $(D_KEYWORD double) serialization if $(D_KEYWORD real) on your environment equals $(D_KEYWORD double).
      *
      * Params:
      *  value = the content to serialize.
      *
      * Returns:
-     *  this to method chain.
+     *  self, i.e. for method chaining.
      */
     ref Packer pack(T)(in T value) if (is(Unqual!T == bool))
     {
-        return value ? packTrue() : packFalse();
-    }
-
-
-    /// ditto
-    ref Packer pack(T)(in T value) if (is(Unqual!T == ubyte))
-    {
-        if (value < (1 << 7)) {
-            // fixnum
-            buffer_.put(take8from(value));
-        } else {
-            // uint 8
-            store_[0] = Format.UINT8;
-            store_[1] = take8from(value);
-            buffer_.put(store_[0..Offset + ubyte.sizeof]);
-        }
+        if (value)
+            stream_.put(Format.TRUE);
+        else
+            stream_.put(Format.FALSE);
 
         return this;
     }
 
 
     /// ditto
-    ref Packer pack(T)(in T value) if (is(Unqual!T == ushort))
+    ref Packer pack(T)(in T value) if (isUnsigned!T)
     {
-        if (value < (1 << 7)) {
-            // fixnum
-            buffer_.put(take8from!16(value));
-        } else if (value < (1 << 8)) {
-            // uint 8
-            store_[0] = Format.UINT8;
-            store_[1] = take8from!16(value);
-            buffer_.put(store_[0..Offset + ubyte.sizeof]);
-        } else {
-            // uint 16
-            const temp = convertEndianTo!16(value);
+        // ulong < ulong is slower than uint < uint
+        static if (!is(Unqual!T  == ulong)) {
+            enum Bits = T.sizeof * 8;
 
-            store_[0] = Format.UINT16;
-            *cast(ushort*)&store_[Offset] = temp;
-            buffer_.put(store_[0..Offset + ushort.sizeof]);
-        }
-
-        return this;
-    }
-
-
-    /// ditto
-    ref Packer pack(T)(in T value) if (is(Unqual!T == uint))
-    {
-        if (value < (1 << 8)) {
-            if (value < (1 << 7)) {
-                // fixnum
-                buffer_.put(take8from!32(value));
-            } else {
-                // uint 8
-                store_[0] = Format.UINT8;
-                store_[1] = take8from!32(value);
-                buffer_.put(store_[0..Offset + ubyte.sizeof]);
-            }
-        } else {
-            if (value < (1 << 16)) {
-                // uint 16
-                const temp = convertEndianTo!16(value);
-
-                store_[0] = Format.UINT16;
-                *cast(ushort*)&store_[Offset] = temp;
-                buffer_.put(store_[0..Offset + ushort.sizeof]);
-            } else {
-                // uint 32
-                const temp = convertEndianTo!32(value);
-
-                store_[0] = Format.UINT32;
-                *cast(uint*)&store_[Offset] = temp;
-                buffer_.put(store_[0..Offset + uint.sizeof]);
-            }
-        }
-
-        return this;
-    }
-
-
-    /// ditto
-    ref Packer pack(T)(in T value) if (is(Unqual!T == ulong))
-    {
-        if (value < (1UL << 8)) {
-            if (value < (1UL << 7)) {
-                // fixnum
-                buffer_.put(take8from!64(value));
-            } else {
-                // uint 8
-                store_[0] = Format.UINT8;
-                store_[1] = take8from!64(value);
-                buffer_.put(store_[0..Offset + ubyte.sizeof]);
-            }
-        } else {
-            if (value < (1UL << 16)) {
-                // uint 16
-                const temp = convertEndianTo!16(value);
-
-                store_[0] = Format.UINT16;
-                *cast(ushort*)&store_[Offset] = temp;
-                buffer_.put(store_[0..Offset + ushort.sizeof]);
-            } else if (value < (1UL << 32)){
-                // uint 32
-                const temp = convertEndianTo!32(value);
-
-                store_[0] = Format.UINT32;
-                *cast(uint*)&store_[Offset] = temp;
-                buffer_.put(store_[0..Offset + uint.sizeof]);
-            } else {
-                // uint 64
-                const temp = convertEndianTo!64(value);
-
-                store_[0] = Format.UINT64;
-                *cast(ulong*)&store_[Offset] = temp;
-                buffer_.put(store_[0..Offset + ulong.sizeof]);
-            }
-        }
-
-        return this;
-    }
-
-
-    /// ditto
-    ref Packer pack(T)(in T value) if (is(Unqual!T == byte))
-    {
-        if (value < -(1 << 5)) {
-            // int 8
-            store_[0] = Format.INT8;
-            store_[1] = take8from(value);
-            buffer_.put(store_[0..Offset + byte.sizeof]);
-        } else {
-            // fixnum
-            buffer_.put(take8from(value));
-        }
-
-        return this;
-    }
-
-
-    /// ditto
-    ref Packer pack(T)(in T value) if (is(Unqual!T == short))
-    {
-        if (value < -(1 << 5)) {
-            if (value < -(1 << 7)) {
-                // int 16
-                const temp = convertEndianTo!16(value);
-
-                store_[0] = Format.INT16;
-                *cast(short*)&store_[Offset] = temp;
-                buffer_.put(store_[0..Offset + short.sizeof]);
-            } else {
-                // int 8
-                store_[0] = Format.INT8;
-                store_[1] = take8from!16(value);
-                buffer_.put(store_[0..Offset + byte.sizeof]);
-            }
-        } else if (value < (1 << 7)) {
-            // fixnum
-            buffer_.put(take8from!16(value));
-        } else {
             if (value < (1 << 8)) {
-                // uint 8
-                store_[0] = Format.UINT8;
-                store_[1] = take8from!16(value);
-                buffer_.put(store_[0..Offset + ubyte.sizeof]);                
-            } else {
-                // uint 16
-                const temp = convertEndianTo!16(value);
-
-                store_[0] = Format.UINT16;
-                *cast(ushort*)&store_[Offset] = temp;
-                buffer_.put(store_[0..Offset + ushort.sizeof]);
-            }
-        }
-
-        return this;
-    }
-
-
-    /// ditto
-    ref Packer pack(T)(in T value) if (is(Unqual!T == int))
-    {
-        if (value < -(1 << 5)) {
-            if (value < -(1 << 15)) {
-                // int 32
-                const temp = convertEndianTo!32(value);
-
-                store_[0] = Format.INT32;
-                *cast(int*)&store_[Offset] = temp;
-                buffer_.put(store_[0..Offset + int.sizeof]);
-            } else if (value < -(1 << 7)) {
-                // int 16
-                const temp = convertEndianTo!16(value);
-
-                store_[0] = Format.INT16;
-                *cast(short*)&store_[Offset] = temp;
-                buffer_.put(store_[0..Offset + short.sizeof]);
-            } else {
-                // int 8
-                store_[0] = Format.INT8;
-                store_[1] = take8from!32(value);
-                buffer_.put(store_[0..Offset + byte.sizeof]);
-            }
-        } else if (value < (1 << 7)) {
-            // fixnum
-            buffer_.put(take8from!32(value));
-        } else {
-            if (value < (1 << 8)) {
-                // uint 8
-                store_[0] = Format.UINT8;
-                store_[1] = take8from!32(value);
-                buffer_.put(store_[0..Offset + ubyte.sizeof]);
-            } else if (value < (1 << 16)) {
-                // uint 16
-                const temp = convertEndianTo!16(value);
-
-                store_[0] = Format.UINT16;
-                *cast(ushort*)&store_[Offset] = temp;
-                buffer_.put(store_[0..Offset + ushort.sizeof]);
-            } else {
-                // uint 32
-                const temp = convertEndianTo!32(value);
-
-                store_[0] = Format.UINT32;
-                *cast(uint*)&store_[Offset] = temp;
-                buffer_.put(store_[0..Offset + uint.sizeof]);
-            }
-        }
-
-        return this;
-    }
-
-
-    /// ditto
-    ref Packer pack(T)(in T value) if (is(Unqual!T == long))
-    {
-        if (value < -(1L << 5)) {
-            if (value < -(1L << 15)) {
-                if (value < -(1L << 31)) {
-                    // int 64
-                    const temp = convertEndianTo!64(value);
-
-                    store_[0] = Format.INT64;
-                    *cast(long*)&store_[Offset] = temp;
-                    buffer_.put(store_[0..Offset + long.sizeof]);
+                if (value < (1 << 7)) {
+                    // fixnum
+                    stream_.put(take8from!Bits(value));
                 } else {
-                    // int 32
-                    const temp = convertEndianTo!32(value);
-
-                    store_[0] = Format.INT32;
-                    *cast(int*)&store_[Offset] = temp;
-                    buffer_.put(store_[0..Offset + int.sizeof]);
-                }
-            } else {
-                if (value < -(1L << 7)) {
-                    // int 16
-                    const temp = convertEndianTo!16(value);
-
-                    store_[0] = Format.INT16;
-                    *cast(short*)&store_[Offset] = temp;
-                    buffer_.put(store_[0..Offset + short.sizeof]);
-                } else {
-                    // int 8
-                    store_[0] = Format.INT8;
-                    store_[1] = take8from!64(value);
-                    buffer_.put(store_[0..Offset + byte.sizeof]);
-                }
-            }
-        } else if (value < (1L << 7)) {
-            // fixnum
-            buffer_.put(take8from!64(value));
-        } else {
-            if (value < (1L << 16)) {
-                if (value < (1L << 8)) {
                     // uint 8
                     store_[0] = Format.UINT8;
-                    store_[1] = take8from!64(value);
-                    buffer_.put(store_[0..Offset + ubyte.sizeof]);
-                } else {
+                    store_[1] = take8from!Bits(value);
+                    stream_.put(store_[0..Offset + ubyte.sizeof]);
+                }
+            } else {
+                if (value < (1 << 16)) {
                     // uint 16
                     const temp = convertEndianTo!16(value);
 
                     store_[0] = Format.UINT16;
                     *cast(ushort*)&store_[Offset] = temp;
-                    buffer_.put(store_[0..Offset + ushort.sizeof]);
-                }
-            } else {
-                if (value < (1L << 32)) {
+                    stream_.put(store_[0..Offset + ushort.sizeof]);
+                } else {
                     // uint 32
                     const temp = convertEndianTo!32(value);
 
                     store_[0] = Format.UINT32;
                     *cast(uint*)&store_[Offset] = temp;
-                    buffer_.put(store_[0..Offset + uint.sizeof]);
+                    stream_.put(store_[0..Offset + uint.sizeof]);
+                }
+            }
+        } else {
+            if (value < (1UL << 8)) {
+                if (value < (1UL << 7)) {
+                    // fixnum
+                    stream_.put(take8from!64(value));
+                } else {
+                    // uint 8
+                    store_[0] = Format.UINT8;
+                    store_[1] = take8from!64(value);
+                    stream_.put(store_[0..Offset + ubyte.sizeof]);
+                }
+            } else {
+                if (value < (1UL << 16)) {
+                    // uint 16
+                    const temp = convertEndianTo!16(value);
+
+                    store_[0] = Format.UINT16;
+                    *cast(ushort*)&store_[Offset] = temp;
+                    stream_.put(store_[0..Offset + ushort.sizeof]);
+                } else if (value < (1UL << 32)){
+                    // uint 32
+                    const temp = convertEndianTo!32(value);
+
+                    store_[0] = Format.UINT32;
+                    *cast(uint*)&store_[Offset] = temp;
+                    stream_.put(store_[0..Offset + uint.sizeof]);
                 } else {
                     // uint 64
                     const temp = convertEndianTo!64(value);
 
                     store_[0] = Format.UINT64;
                     *cast(ulong*)&store_[Offset] = temp;
-                    buffer_.put(store_[0..Offset + ulong.sizeof]);
+                    stream_.put(store_[0..Offset + ulong.sizeof]);
                 }
             }
         }
@@ -1198,26 +463,162 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
 
 
     /// ditto
-    ref Packer pack(T)(in T value) if (is(Unqual!T == float))
+    ref Packer pack(T)(in T value) if (isSigned!T && isIntegral!T)
     {
-        const temp = convertEndianTo!32(_f(value).i);
+        // long < long is slower than int < int
+        static if (!is(Unqual!T == long)) {
+            enum Bits = T.sizeof * 8;
 
-        store_[0] = Format.FLOAT;
-        *cast(uint*)&store_[Offset] = temp;
-        buffer_.put(store_[0..Offset + uint.sizeof]);
+            if (value < -(1 << 5)) {
+                if (value < -(1 << 15)) {
+                    // int 32
+                    const temp = convertEndianTo!32(value);
+
+                    store_[0] = Format.INT32;
+                    *cast(int*)&store_[Offset] = temp;
+                    stream_.put(store_[0..Offset + int.sizeof]);
+                } else if (value < -(1 << 7)) {
+                    // int 16
+                    const temp = convertEndianTo!16(value);
+
+                    store_[0] = Format.INT16;
+                    *cast(short*)&store_[Offset] = temp;
+                    stream_.put(store_[0..Offset + short.sizeof]);
+                } else {
+                    // int 8
+                    store_[0] = Format.INT8;
+                    store_[1] = take8from!Bits(value);
+                    stream_.put(store_[0..Offset + byte.sizeof]);
+                }
+            } else if (value < (1 << 7)) {
+                // fixnum
+                stream_.put(take8from!Bits(value));
+            } else {
+                if (value < (1 << 8)) {
+                    // uint 8
+                    store_[0] = Format.UINT8;
+                    store_[1] = take8from!Bits(value);
+                    stream_.put(store_[0..Offset + ubyte.sizeof]);
+                } else if (value < (1 << 16)) {
+                    // uint 16
+                    const temp = convertEndianTo!16(value);
+
+                    store_[0] = Format.UINT16;
+                    *cast(ushort*)&store_[Offset] = temp;
+                    stream_.put(store_[0..Offset + ushort.sizeof]);
+                } else {
+                    // uint 32
+                    const temp = convertEndianTo!32(value);
+
+                    store_[0] = Format.UINT32;
+                    *cast(uint*)&store_[Offset] = temp;
+                    stream_.put(store_[0..Offset + uint.sizeof]);
+                }
+            }
+        } else {
+            if (value < -(1L << 5)) {
+                if (value < -(1L << 15)) {
+                    if (value < -(1L << 31)) {
+                        // int 64
+                        const temp = convertEndianTo!64(value);
+
+                        store_[0] = Format.INT64;
+                        *cast(long*)&store_[Offset] = temp;
+                        stream_.put(store_[0..Offset + long.sizeof]);
+                    } else {
+                        // int 32
+                        const temp = convertEndianTo!32(value);
+
+                        store_[0] = Format.INT32;
+                        *cast(int*)&store_[Offset] = temp;
+                        stream_.put(store_[0..Offset + int.sizeof]);
+                    }
+                } else {
+                    if (value < -(1L << 7)) {
+                        // int 16
+                        const temp = convertEndianTo!16(value);
+
+                        store_[0] = Format.INT16;
+                        *cast(short*)&store_[Offset] = temp;
+                        stream_.put(store_[0..Offset + short.sizeof]);
+                    } else {
+                        // int 8
+                        store_[0] = Format.INT8;
+                        store_[1] = take8from!64(value);
+                        stream_.put(store_[0..Offset + byte.sizeof]);
+                    }
+                }
+            } else if (value < (1L << 7)) {
+                // fixnum
+                stream_.put(take8from!64(value));
+            } else {
+                if (value < (1L << 16)) {
+                    if (value < (1L << 8)) {
+                        // uint 8
+                        store_[0] = Format.UINT8;
+                        store_[1] = take8from!64(value);
+                        stream_.put(store_[0..Offset + ubyte.sizeof]);
+                    } else {
+                        // uint 16
+                        const temp = convertEndianTo!16(value);
+
+                        store_[0] = Format.UINT16;
+                        *cast(ushort*)&store_[Offset] = temp;
+                        stream_.put(store_[0..Offset + ushort.sizeof]);
+                    }
+                } else {
+                    if (value < (1L << 32)) {
+                        // uint 32
+                        const temp = convertEndianTo!32(value);
+
+                        store_[0] = Format.UINT32;
+                        *cast(uint*)&store_[Offset] = temp;
+                        stream_.put(store_[0..Offset + uint.sizeof]);
+                    } else {
+                        // uint 64
+                        const temp = convertEndianTo!64(value);
+
+                        store_[0] = Format.UINT64;
+                        *cast(ulong*)&store_[Offset] = temp;
+                        stream_.put(store_[0..Offset + ulong.sizeof]);
+                    }
+                }
+            }
+        }
 
         return this;
     }
 
 
     /// ditto
-    ref Packer pack(T)(in T value) if (is(Unqual!T == double))
+    ref Packer pack(T)(in T value) if (isFloatingPoint!T)
     {
-        const temp = convertEndianTo!64(_d(value).i);
+        static if (is(Unqual!T == float)) {
+            const temp = convertEndianTo!32(_f(value).i);
 
-        store_[0] = Format.DOUBLE;
-        *cast(ulong*)&store_[Offset] = temp;
-        buffer_.put(store_[0..Offset + ulong.sizeof]);
+            store_[0] = Format.FLOAT;
+            *cast(uint*)&store_[Offset] = temp;
+            stream_.put(store_[0..Offset + uint.sizeof]);
+        } else static if (is(Unqual!T == double)) {
+            const temp = convertEndianTo!64(_d(value).i);
+
+            store_[0] = Format.DOUBLE;
+            *cast(ulong*)&store_[Offset] = temp;
+            stream_.put(store_[0..Offset + ulong.sizeof]);
+        } else {
+            static if (real.sizeof > double.sizeof) {
+                store_[0]      = Format.REAL;
+                const temp     = _r(value);
+                const fraction = convertEndianTo!64(temp.fraction);
+                const exponent = convertEndianTo!16(temp.exponent);
+
+                *cast(Unqual!(typeof(fraction))*)&store_[Offset]                   = fraction;
+                *cast(Unqual!(typeof(exponent))*)&store_[Offset + fraction.sizeof] = exponent;
+                stream_.put(store_[0..$]);
+            } else {  // Non-x86 CPUs, real type equals double type.
+                pack(cast(double)value);
+            }
+        }
 
         return this;
     }
@@ -1233,9 +634,49 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
 
 
     /// ditto
+    ref Packer pack(T)(in T value) if (isPointer!T)
+    {
+        static if (is(Unqual!T == void*)) {  // for pack(null)
+            enforce(value is null, "Can't serialize void type");
+            stream_.put(Format.NIL);
+        } else {
+            if (value is null)
+                stream_.put(Format.NIL);
+            else
+                pack(mixin(AsteriskOf!T ~ "value"));
+        }
+
+        return this;
+    }
+
+
+    /// ditto
     ref Packer pack(T)(in T array) if (isArray!T)
     {
         alias typeof(T.init[0]) U;
+
+        /*
+         * Serializes raw type-information to stream.
+         */
+        void beginRaw(in size_t length)
+        {
+            if (length < 32) {
+                const ubyte temp = Format.RAW | cast(ubyte)length;
+                stream_.put(take8from(temp));
+            } else if (length < 65536) {
+                const temp = convertEndianTo!16(length);
+
+                store_[0] = Format.RAW16;
+                *cast(ushort*)&store_[Offset] = temp;
+                stream_.put(store_[0..Offset + ushort.sizeof]);
+            } else {
+                const temp = convertEndianTo!32(length);
+
+                store_[0] = Format.RAW32;
+                *cast(uint*)&store_[Offset] = temp;
+                stream_.put(store_[0..Offset + uint.sizeof]);
+            }
+        }
 
         if (array is null)
             return packNil();
@@ -1244,10 +685,10 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
         static if (isByte!(U) || isSomeChar!(U)) {
             ubyte[] raw = cast(ubyte[])array;
 
-            packRaw(raw.length);
-            buffer_.put(raw);
+            beginRaw(raw.length);
+            stream_.put(raw);
         } else {
-            packArray(array.length);
+            beginArray(array.length);
             foreach (elem; array)
                 pack(elem);
         }
@@ -1262,7 +703,7 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
         if (array is null)
             return packNil();
 
-        packMap(array.length);
+        beginMap(array.length);
         foreach (key, value; array) {
             pack(key);
             pack(value);
@@ -1272,65 +713,45 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
     }
 
 
-    /**
-     * Serializes $(D_KEYWORD real) type and writes to buffer.
-     *
-     * This method is marked @system because $(D_KEYWORD real) type is D only!
-     * MessagePack doesn't define $(D_KEYWORD real) type format.
-     * Don't use this method if you communicate with other languages.
-     *
-     * Transfers pack!(double) if $(D_KEYWORD real) type on your environment equals $(D_KEYWORD double) type.
-     *
-     * Params:
-     *  value = the content to serialize.
-     *
-     * Returns:
-     *  this to method chain.
-     */
-    @system ref Packer pack(T)(in T value) if (is(Unqual!T == real))
+    /// ditto
+    ref Packer pack(Types...)(auto ref Types objects)
     {
-        static if (real.sizeof > double.sizeof) {
-            store_[0..2]   = [Format.REAL, real.sizeof];
-            const temp     = _r(value);
-            const fraction = convertEndianTo!64(temp.fraction);
-            const exponent = convertEndianTo!ES(temp.exponent);
-
-            *cast(Unqual!(typeof(fraction))*)&store_[Offset + 1]                   = fraction;
-            *cast(Unqual!(typeof(exponent))*)&store_[Offset + 1 + fraction.sizeof] = exponent;
-            buffer_.put(store_[0..$]);
-        } else {  // Non-x86 CPUs, real type equals double type.
-            pack(cast(double)value);
-        }
+        foreach (i, T; Types)
+            pack(objects[i]);
 
         return this;
     }
 
 
     /**
-     * Serializes $(D_PARAM object) and writes to buffer.
+     * Serializes $(D_PARAM object) and writes to stream.
      *
-     * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D mp_pack) method.
-     * $(D mp_pack) signature is:
+     * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D toMsgpack) method.
+     * $(D toMsgpack) signature is:
      * -----
-     * void mp_pack(Packer)(ref Packer packer) const
+     * void toMsgpack(Packer)(ref Packer packer) const
      * -----
-     * Assumes $(D std.typecons.Tuple) if $(D_KEYWORD struct) doens't implement $(D mp_pack).
+     * Assumes $(D std.typecons.Tuple) if $(D_KEYWORD struct) doens't implement $(D toMsgpack).
+     * $(D std.typecons.Tuple) is serialized to Array type.
+     * -----
+     * packer.pack(tuple(true, 1, "Hi!"))  // -> '[true, 1, "Hi!"]', not 'ture, 1, "Hi!"'
+     * -----
      *
      * Params:
      *  object = the content to serialize.
      *
      * Returns:
-     *  this to method chain.
+     *  self, i.e. for method chaining.
      */
     ref Packer pack(T)(in T object) if (is(Unqual!T == class))
     {
-        static if (!__traits(compiles, { T t; t.mp_pack(this); }))
+        static if (!__traits(compiles, { T t; t.toMsgpack(this); }))
             static assert(false, T.stringof ~ " is not a MessagePackable object");
 
         if (object is null)
             return packNil();
 
-        object.mp_pack(this);
+        object.toMsgpack(this);
 
         return this;
     }
@@ -1339,10 +760,10 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
     /// ditto
     ref Packer pack(T)(auto ref T object) if (is(Unqual!T == struct))
     {
-        static if (__traits(compiles, { T t; t.mp_pack(this); })) {
-            object.mp_pack(this);
+        static if (__traits(compiles, { T t; t.toMsgpack(this); })) {
+            object.toMsgpack(this);
         } else {  // std.typecons.Tuple
-            packArray(object.field.length);
+            beginArray(object.field.length);
             foreach (f; object.field)
                 pack(f);
         }
@@ -1352,57 +773,81 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
 
 
     /**
-     * Serializes $(D_PARAM Types) objects and writes to buffer.
+     * Serializes the arguments as container to stream.
+     *
+     * -----
+     * packer.packArray(true, 1);  // -> [true, 1]
+     * packer.packMap("Hi", 100);  // -> ["Hi":100]
+     * -----
+     *
+     * In packMap, the number of arguments must be even.
      *
      * Params:
      *  objects = the contents to serialize.
      *
      * Returns:
-     *  this to method chain.
+     *  self, i.e. for method chaining.
      */
-    template pack(Types...) if (Types.length > 1)
+    ref Packer packArray(Types...)(auto ref Types objects)
     {
-        ref Packer pack(auto ref Types objects)
-        {
-            foreach (i, T; Types)
-                pack(objects[i]);
+        beginArray(Types.length);
+        foreach (i, T; Types)
+            pack(objects[i]);
+        // pack(objects);  // slow :(
 
-            return this;
-        }
+        return this;
     }
-    /*
-     * @@@BUG@@@ http://d.puremagic.com/issues/show_bug.cgi?id=2460
-    ref Packer pack(Types...)(auto ref Types objects) if (Types.length > 1)
-    { // do stuff }
-    */
+
+
+    /// ditto
+    ref Packer packMap(Types...)(auto ref Types objects)
+    {
+        static assert(Types.length % 2 == 1, "The number of arguments must be even");
+
+        beginMap(Types.length / 2);
+        foreach (i, T; Types)
+            pack(objects[i]);
+
+        return this;
+    }
 
 
     /**
-     * Serializes type-information to buffer.
+     * Serializes the type-information to stream.
+     *
+     * These methods don't serialize contents.
+     * You need to call pack method to serialize contents at your own risk.
+     * -----
+     * packer.beginArray(3).pack(true, 1);  // -> [true, 1,
+     *
+     * // other operation
+     * 
+     * packer.pack("Hi!");                  // -> [true, 1, "Hi!"]
+     * -----
      *
      * Params:
      *  length = the length of container.
      *
      * Returns:
-     *  this to method chain.
+     *  self, i.e. for method chaining.
      */
-    ref Packer packArray(in size_t length)
+    ref Packer beginArray(in size_t length)
     {
         if (length < 16) {
             const ubyte temp = Format.ARRAY | cast(ubyte)length;
-            buffer_.put(take8from(temp));
+            stream_.put(take8from(temp));
         } else if (length < 65536) {
             const temp = convertEndianTo!16(length);
 
             store_[0] = Format.ARRAY16;
             *cast(ushort*)&store_[Offset] = temp;
-            buffer_.put(store_[0..Offset + ushort.sizeof]);
+            stream_.put(store_[0..Offset + ushort.sizeof]);
         } else {
             const temp = convertEndianTo!32(length);
 
             store_[0] = Format.ARRAY32;
             *cast(uint*)&store_[Offset] = temp;
-            buffer_.put(store_[0..Offset + uint.sizeof]);
+            stream_.put(store_[0..Offset + uint.sizeof]);
         }
 
         return this;
@@ -1410,78 +855,36 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
 
 
     /// ditto
-    ref Packer packMap(in size_t length)
+    ref Packer beginMap(in size_t length)
     {
         if (length < 16) {
             const ubyte temp = Format.MAP | cast(ubyte)length;
-            buffer_.put(take8from(temp));
+            stream_.put(take8from(temp));
         } else if (length < 65536) {
             const temp = convertEndianTo!16(length);
 
             store_[0] = Format.MAP16;
             *cast(ushort*)&store_[Offset] = temp;
-            buffer_.put(store_[0..Offset + ushort.sizeof]);
+            stream_.put(store_[0..Offset + ushort.sizeof]);
         } else {
             const temp = convertEndianTo!32(length);
 
             store_[0] = Format.MAP32;
             *cast(uint*)&store_[Offset] = temp;
-            buffer_.put(store_[0..Offset + uint.sizeof]);
+            stream_.put(store_[0..Offset + uint.sizeof]);
         }
 
         return this;
     }
 
 
-    /// ditto
-    ref Packer packRaw(in size_t length)
-    {
-        if (length < 32) {
-            const ubyte temp = Format.RAW | cast(ubyte)length;
-            buffer_.put(take8from(temp));
-        } else if (length < 65536) {
-            const temp = convertEndianTo!16(length);
-
-            store_[0] = Format.RAW16;
-            *cast(ushort*)&store_[Offset] = temp;
-            buffer_.put(store_[0..Offset + ushort.sizeof]);
-        } else {
-            const temp = convertEndianTo!32(length);
-
-            store_[0] = Format.RAW32;
-            *cast(uint*)&store_[Offset] = temp;
-            buffer_.put(store_[0..Offset + uint.sizeof]);
-        }
-
-        return this;
-    }
-
-
-    /**
-     * Serializes the unique value.
-     *
-     * Returns:
-     *  this to method chain.
+  private:
+    /*
+     * Serializes the nil value.
      */
     ref Packer packNil()
     {
-        buffer_.put(Format.NIL);
-        return this;
-    }
-
-
-    /// ditto
-    ref Packer packTrue()
-    {
-        buffer_.put(Format.TRUE);
-        return this;
-    }
-
-
-    /// ditto
-    ref Packer packFalse()
-    {
-        buffer_.put(Format.FALSE);
+        stream_.put(Format.NIL);
         return this;
     }
 }
@@ -1491,19 +894,22 @@ struct Packer(Buffer) if (isOutputRange!(Buffer, ubyte) && isOutputRange!(Buffer
  * Helper for $(D Packer) construction.
  *
  * Params:
- *  buffer = the buffer to write.
+ *  stream = the stream to write.
  *
  * Returns:
  *  a $(D Packer) object instantiated and initialized according to the arguments.
  */
-@safe Packer!(Buffer) packer(Buffer)(Buffer buffer)
+@safe
+Packer!(Stream) packer(Stream)(Stream stream)
 {
-    return typeof(return)(buffer);
+    return typeof(return)(stream);
 }
 
 
 version (unittest) 
 {
+    alias Appender!(ubyte[]) SimpleBuffer;
+
     mixin template DefinePacker()
     {
         SimpleBuffer buffer; Packer!(SimpleBuffer*) packer = packer(&buffer);
@@ -1515,11 +921,10 @@ unittest
     { // unique value
         mixin DefinePacker;
 
-        ubyte[] result = [Format.NIL, Format.TRUE, Format.FALSE,
-                                      Format.TRUE, Format.FALSE];
+        ubyte[] result = [Format.NIL, Format.TRUE, Format.FALSE];
 
-        packer.packNil().packTrue().packFalse().pack(true, false);
-        foreach (i, value; packer.buffer.data)
+        packer.pack(null, true, false);
+        foreach (i, value; packer.stream.data)
             assert(value == result[i]);
     }
     { // uint *
@@ -1632,10 +1037,51 @@ unittest
             default:
                 const t = _r(cast(T)tests[I].value);
                 const f = convertEndianTo!64(t.fraction);
-                const e = convertEndianTo!ES(t.exponent);
-                assert(buffer.data[1] == real.sizeof);
-                assert(memcmp(&buffer.data[2],            &f, f.sizeof) == 0);
-                assert(memcmp(&buffer.data[2 + f.sizeof], &e, e.sizeof) == 0);
+                const e = convertEndianTo!16(t.exponent);
+                assert(memcmp(&buffer.data[1],            &f, f.sizeof) == 0);
+                assert(memcmp(&buffer.data[1 + f.sizeof], &e, e.sizeof) == 0);
+            }
+        }
+    }
+    { // pointer
+        static struct PTest
+        { 
+            ubyte format; 
+
+            union
+            {
+                ulong*  p0;
+                long*   p1;
+                double* p2;
+            }
+        }
+
+        PTest[] tests = [PTest(Format.UINT64), PTest(Format.INT64), PTest(Format.DOUBLE)];
+
+        ulong  v0 = ulong.max;
+        long   v1 = long.min;
+        double v2 = double.max;
+
+        foreach (I, Index; TypeTuple!("0", "1", "2")) {
+            mixin DefinePacker;
+
+            mixin("tests[I].p" ~ Index ~ " = &v" ~ Index ~ ";");
+
+            packer.pack(mixin("tests[I].p" ~ Index));
+            assert(buffer.data[0] == tests[I].format);
+
+            switch (I) {
+            case 0:
+                auto answer = convertEndianTo!64(*tests[I].p0);
+                assert(memcmp(&buffer.data[1], &answer, ulong.sizeof) == 0);
+                break;
+            case 1:
+                auto answer = convertEndianTo!64(*tests[I].p1);
+                assert(memcmp(&buffer.data[1], &answer, long.sizeof) == 0);
+                break;
+            default:
+                const answer = convertEndianTo!64(_d(*tests[I].p2).i);
+                assert(memcmp(&buffer.data[1], &answer, double.sizeof) == 0);
             }
         }
     }
@@ -1658,15 +1104,14 @@ unittest
         static Test[][] tests = [
             [{Format.ARRAY | A, Format.ARRAY | A}, {Format.ARRAY16, B}, {Format.ARRAY32, C}],
             [{Format.MAP   | A, Format.MAP   | A}, {Format.MAP16,   B}, {Format.MAP32,   C}],
-            [{Format.RAW   | A, Format.RAW   | A}, {Format.RAW16,   B}, {Format.RAW32,   C}],
         ];
 
-        foreach (I, Name; TypeTuple!("Array", "Map", "Raw")) {
+        foreach (I, Name; TypeTuple!("Array", "Map")) {
             auto test = tests[I];
 
             foreach (i, T; TypeTuple!(ubyte, ushort, uint)) {
                 mixin DefinePacker; 
-                mixin("packer.pack" ~ Name ~ "(i ? test[i].value : A);");
+                mixin("packer.begin" ~ Name ~ "(i ? test[i].value : A);");
 
                 assert(buffer.data[0] == test[i].format);
 
@@ -1692,7 +1137,7 @@ unittest
             {
                 uint num = uint.max;
 
-                void mp_pack(P)(ref P p) const { p.packArray(1); p.pack(num); }
+                void toMsgpack(P)(ref P p) const { p.packArray(num); }
             }
 
             mixin DefinePacker; S test;
@@ -1721,7 +1166,7 @@ unittest
 
                 this(uint n) { num = n; }
 
-                void mp_pack(P)(ref P p) const { p.packArray(1); p.pack(num); }
+                void toMsgpack(P)(ref P p) const { p.packArray(num); }
             }
 
             mixin DefinePacker; C test = new C(ushort.max);
@@ -1746,6 +1191,18 @@ class UnpackException : Exception
 {
     this(string message)
     { 
+        super(message);
+    }
+}
+
+
+/**
+ * $(D InvalidTypeException) is thrown on type errors
+ */
+class InvalidTypeException : Exception
+{
+    this(string message)
+    {
         super(message);
     }
 }
@@ -1779,7 +1236,8 @@ version (D_Ddoc)
          * Returns:
          *  the reference of internal buffer.
          */
-        @property @safe nothrow ubyte[] buffer();
+        @property @safe
+        nothrow ubyte[] buffer();
 
 
         /**
@@ -1798,34 +1256,39 @@ version (D_Ddoc)
          * Params:
          *  size = the number of consuming.
          */
-        @safe nothrow void bufferConsumed(in size_t size);
+        @safe
+        nothrow void bufferConsumed(in size_t size);
 
 
         /**
          * Removes unparsed buffer.
          */
-        @safe nothrow void removeUnparsed();
+        @safe
+        nothrow void removeUnparsed();
 
 
         /**
          * Returns:
          *  the total size including unparsed buffer size.
          */
-        @property @safe nothrow size_t size() const;
+        @property @safe
+        nothrow size_t size() const;
 
 
         /**
          * Returns:
          *  the parsed size of buffer.
          */
-        @property @safe nothrow size_t parsedSize() const;
+        @property @safe
+        nothrow size_t parsedSize() const;
 
 
         /**
          * Returns:
          *  the unparsed size of buffer.
          */
-        @property @safe nothrow size_t unparsedSize() const;
+        @property @safe
+        nothrow size_t unparsedSize() const;
     }
 }
 else
@@ -1841,7 +1304,8 @@ else
 
 
       public:
-        @property @safe nothrow ubyte[] buffer()
+        @property @safe
+        nothrow ubyte[] buffer()
         {
             return buffer_;
         }
@@ -1904,7 +1368,8 @@ else
         }
 
 
-        @safe nothrow void bufferConsumed(in size_t size)
+        @safe
+        nothrow void bufferConsumed(in size_t size)
         {
             if (used_ + size > buffer_.length)
                 used_ = buffer_.length;
@@ -1913,32 +1378,37 @@ else
         }
 
 
-        @safe nothrow void removeUnparsed()
+        @safe
+        nothrow void removeUnparsed()
         {
             used_ = offset_;
         }
 
 
-        @property @safe nothrow size_t size() const
+        @property @safe
+        nothrow size_t size() const
         {
             return parsed_ - offset_ + used_;
         }
 
 
-        @property @safe nothrow size_t parsedSize() const
+        @property @safe
+        nothrow size_t parsedSize() const
         {
             return parsed_;
         }
 
 
-        @property @safe nothrow size_t unparsedSize() const
+        @property @safe
+        nothrow size_t unparsedSize() const
         {
             return used_ - offset_;
         }
 
 
       private:
-        @safe void initializeBuffer(in ubyte[] target, in size_t bufferSize = 8192)
+        @safe
+        void initializeBuffer(in ubyte[] target, in size_t bufferSize = 8192)
         {
             const size = target.length;
 
@@ -1955,8 +1425,8 @@ else
  */
 enum UnpackerType
 {
-    DIRECT,  /// Direct-conversion deserializer
-    STREAM   /// Stream deserializer
+    direct,  /// Direct-conversion deserializer
+    stream   /// Stream deserializer
 }
 
 
@@ -1968,24 +1438,20 @@ enum UnpackerType
  * Example:
  * -----
  * // serializedData is [10, 0.1, false]
- * auto unpacker = unpacker!(UnpackerType.DIRECT)(serializedData);
+ * auto unpacker = unpacker!(UnpackerType.direct)(serializedData);
  *
  * uint   n;
  * double d;
  * bool   b;
  *
- * auto size = unpacker.unpackArray();
- * if (size != 3)
- *     throw new Exception("Size is mismatched!");
+ * unpacker.unpackArray(n, d, b);
  *
- * unpacker.unpack(n).unpack(d).unpack(b); // or unpacker.unpack(n, d, b)
- *
- * // or
+ * // using Tuple
  * Tuple!(uint, double, bool) record;
  * unpacker.unpack(record);  // record is [10, 0.1, false]
  * -----
  */
-struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
+struct Unpacker(UnpackerType Type : UnpackerType.direct)
 {
   private:
     enum Offset = 1;
@@ -2001,7 +1467,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
      *  target     = byte buffer to deserialize
      *  bufferSize = size limit of buffer size
      */
-    @safe this(in ubyte[] target, in size_t bufferSize = 8192)
+    @safe
+    this(in ubyte[] target, in size_t bufferSize = 8192)
     {
         initializeBuffer(target, bufferSize);
     }
@@ -2010,7 +1477,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     /**
      * Clears states for next deserialization.
      */
-    @safe nothrow void clear()
+    @safe
+    nothrow void clear()
     {
         parsed_ = 0;
     }
@@ -2019,11 +1487,22 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     /**
      * Deserializes $(D_PARAM T) object and assigns to $(D_PARAM value).
      *
+     * If the argument is pointer, dereferences pointer and assigns deserialized value.
+     * -----
+     * int* a;
+     * unpacker.unpack(a)  // enforce throws Exception because a is null or
+     *                     // no throw if deserialized value is nil
+     *
+     * int b; a = &b;
+     * unpacker.unpack(b)  // b is deserialized value or
+     *                     // assigns null if deserialized value is nil
+     * -----
+     * 
      * Params:
      *  value = the reference of value to assign.
      *
      * Returns:
-     *  this to method chain.
+     *  self, i.e. for method chaining.
      *
      * Throws:
      *  UnpackException when doesn't read from buffer or precision loss occurs and
@@ -2042,7 +1521,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
             value = false;
             break;
         default:
-            rollback(0);
+            rollback();
         }
 
         return this;
@@ -2085,7 +1564,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
                 value = cast(T)ul;
                 break;
             default:
-                rollback(0);
+                rollback();
             }
         }
 
@@ -2094,7 +1573,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
 
 
     /// ditto
-    ref Unpacker unpack(T)(ref T value) if (isSigned!T && !isFloatingPoint!T)
+    ref Unpacker unpack(T)(ref T value) if (isSigned!T && isIntegral!T)
     {
         canRead(Offset, 0);
         const header = read();
@@ -2157,7 +1636,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
                 value = cast(T)l;
                 break;
             default:
-                rollback(0);
+                rollback();
             }
         }
 
@@ -2177,38 +1656,53 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
 
             canRead(uint.sizeof);
             temp.i = load32To!uint(read(uint.sizeof));
-            value  = cast(T)temp.f;
+            value  = temp.f;
             break;
         case Format.DOUBLE:
             // check precision loss
             static if (is(Unqual!T == float))
-                rollback(0);
+                rollback();
 
             _d temp;
 
             canRead(ulong.sizeof);
             temp.i = load64To!ulong(read(ulong.sizeof));
-            value  = cast(T)temp.f;
+            value  = temp.f;
             break;
         case Format.REAL:
             // check precision loss
             static if (is(Unqual!T == float) || is(Unqual!T == double))
-                rollback(0);
+                rollback();
 
-            canRead(ubyte.sizeof);
-            if (read() != real.sizeof)
-                throw new UnpackException("Real type on this environment is different from serialized real type.");
+            canRead(RealSize);
 
-            _r temp;
+            version (NonX86)
+            {
+                CustomFloat!80 temp;
 
-            canRead(_r.sizeof);
-            temp.fraction = load64To!(typeof(temp.fraction))(read(temp.fraction.sizeof));
-            mixin("temp.exponent = load" ~ ES.stringof[0..2] ~ // delete u suffix
-                  "To!(typeof(temp.exponent))(read(temp.exponent.sizeof));");
-            value = temp.f;
+                const frac = load64To!ulong (read(ulong.sizeof));
+                const exp  = load16To!ushort(read(ushort.sizeof));
+
+                temp.significand = frac;
+                temp.exponent    = exp & 0x7fff;
+                temp.sign        = exp & 0x8000 ? true : false;
+
+                // NOTE: temp.get!real is inf on non-x86 when deserialized value is larger than double.max.
+                value = temp.get!real;
+            }
+            else
+            {
+                _r temp;
+
+                temp.fraction = load64To!(typeof(temp.fraction))(read(temp.fraction.sizeof));
+                temp.exponent = load16To!(typeof(temp.exponent))(read(temp.exponent.sizeof));
+
+                value = temp.f;
+            }
+
             break;
         default:
-            rollback(0);
+            rollback();
         }
 
         return this;
@@ -2228,6 +1722,43 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     }
 
 
+    /// ditto
+    ref Unpacker unpack(T)(T value) if (isPointer!T)
+    {
+        static if (is(Unqual!T == void*)) {
+            enforce(value !is null,  "Can't deserialize void type");
+            unpackNil(value);
+        } else {
+            if (checkNil())
+                unpackNil(value);
+            else
+                enforce(value !is null, T.stringof ~ " is null pointer");
+
+            unpack(mixin(AsteriskOf!T ~ "value"));
+        }
+
+        return this;
+    }
+
+
+    /// ditto
+    template unpack(Types...) if (Types.length > 1)  // needs constraint-if because "--- killed by signal 11" occurs
+    {
+        ref Unpacker unpack(ref Types objects)
+        {
+            foreach (i, T; Types)
+                unpack!(T)(objects[i]);
+
+            return this;
+        }
+    }
+    /*
+     * @@@BUG@@@ http://d.puremagic.com/issues/show_bug.cgi?id=2460
+    ref Unpacker unpack(Types...)(ref Types objects) if (Types.length > 1)
+    { // do stuff }
+     */
+
+
     /**
      * Deserializes $(D_PARAM T) object and assigns to $(D_PARAM array).
      *
@@ -2237,14 +1768,14 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
      *
      * No assign if the length of deserialized object is 0.
      *
-     * In a static array, this method checks length. Rollbacks and throws exception
+     * In a static array, this method checks the length. Do rollback and throw exception
      * if length of $(D_PARAM array) is different from length of deserialized object.
      *
      * Params:
      *  array = the reference of array to assign.
      *
      * Returns:
-     *  this to method chain.
+     *  self, i.e. for method chaining.
      *
      * Throws:
      *  UnpackException when doesn't read from buffer or precision loss occurs and
@@ -2254,13 +1785,46 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     {
         alias typeof(T.init[0]) U;
 
+        /*
+         * Deserializes type-information of raw type.
+         */
+        @safe
+        size_t beginRaw()
+        {
+            canRead(Offset, 0);
+            const  header = read();
+            size_t length;
+
+            if (0xa0 <= header && header <= 0xbf) {
+                length = header & 0x1f;
+            } else {
+                switch (header) {
+                case Format.RAW16:
+                    canRead(ushort.sizeof);
+                    length = load16To!size_t(read(ushort.sizeof));
+                    break;
+                case Format.RAW32:
+                    canRead(uint.sizeof);
+                    length = load32To!size_t(read(uint.sizeof));
+                    break;
+                case Format.NIL:
+                    break;
+                default:
+                    rollback();
+                }
+            }
+
+            return length;
+        }
+
+
         if (checkNil())
             return unpackNil(array);
 
         // Raw bytes
         static if (isByte!U || isSomeChar!U) {
-            auto length = unpackRaw();
-            auto offset = (length < 32 ? 0 : length < 65536 ? ushort.sizeof : uint.sizeof);
+            auto length = beginRaw();
+            auto offset = calculateSize!(true)(length);
             if (length == 0)
                 return this;
 
@@ -2275,13 +1839,13 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
             static if (isDynamicArray!T)
                 hasRaw_ = true;
         } else {
-            auto length = unpackArray();
+            auto length = beginArray();
             if (length == 0)
                 return this;
 
             static if (isStaticArray!T) {
                 if (length != array.length)
-                    rollback(length < 16 ? 0 : length < 65536 ? ushort.sizeof : uint.sizeof);
+                    rollback(calculateSize(length));
             } else {
                 array.length = length;
             }
@@ -2303,7 +1867,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
         if (checkNil())
             return unpackNil(array);
 
-        auto length = unpackMap();
+        auto length = beginMap();
         if (length == 0)
             return this;
 
@@ -2320,12 +1884,12 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     /**
      * Deserializes $(D_PARAM T) object and assigns to $(D_PARAM object).
      *
-     * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D mp_unpack) method.
-     * $(D mp_unpack) signature is:
+     * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D fromMsgpack) method.
+     * $(D fromMsgpack) signature is:
      * -----
-     * void mp_unpack(ref Unpacker unpacker)
+     * void fromMsgpack(ref Unpacker unpacker)
      * -----
-     * Assumes $(D std.typecons.Tuple) if $(D_KEYWORD struct) doens't implement $(D mp_unpack).
+     * Assumes $(D std.typecons.Tuple) if $(D_KEYWORD struct) doens't implement $(D fromMsgpack).
      * Checks length if $(D_PARAM T) is a $(D std.typecons.Tuple).
      *
      * Params:
@@ -2334,13 +1898,13 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
      *           This is used at new statement if $(D_PARAM object) is $(D_KEYWORD null).
      *
      * Returns:
-     *  this to method chain.
+     *  self, i.e. for method chaining.
      */
     template unpack(T, Args...) if (is(Unqual!T == class))
     {
         ref Unpacker unpack(ref T object, auto ref Args args)
         {
-            static if (!__traits(compiles, { T t; t.mp_unpack(this); }))
+            static if (!__traits(compiles, { T t; t.fromMsgpack(this); }))
                 static assert(false, T.stringof ~ " is not a MessagePackable object");
 
             if (checkNil())
@@ -2349,7 +1913,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
             if (object is null)
                 object = new T(args);
 
-            object.mp_unpack(this);
+            object.fromMsgpack(this);
 
             return this;
         }
@@ -2364,15 +1928,15 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     /// ditto
     ref Unpacker unpack(T)(ref T object) if (is(Unqual!T == struct))
     {
-        static if (__traits(compiles, { T t; t.mp_unpack(this); })) {
-            object.mp_unpack(this);
+        static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
+            object.fromMsgpack(this);
         } else {
-            auto length = unpackArray();
+            auto length = beginArray();
             if (length == 0)
                 return this;
 
             if (length != T.Types.length)
-                rollback(length < 16 ? 0 : length < 65536 ? ushort.sizeof : uint.sizeof);
+                rollback(calculateSize(length));
 
             foreach (i, Type; T.Types)
                 unpack(object.field[i]);
@@ -2383,38 +1947,70 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
 
 
     /**
-     * Deserializes $(D_PARAM Types) objects and assigns to each object.
+     * Deserializes the container object and assigns to each argument.
+     *
+     * These methods check the length. Do rollback if
+     * the length of arguments is different from length of deserialized object.
+     *
+     * In unpackMap, the number of arguments must be even.
      *
      * Params:
-     *  objects = the references of objects to assign.
+     *  objects = the references of object to assign.
      *
      * Returns:
-     *  this to method chain.
+     *  self, i.e. for method chaining.
      */
-    template unpack(Types...) if (Types.length > 1)
+    ref Unpacker unpackArray(Types...)(ref Types objects)
     {
-        ref Unpacker unpack(ref Types objects)
-        {
-            foreach (i, T; Types)
-                unpack!(T)(objects[i]);
+        auto length = beginArray();
+        if (length != Types.length)
+            rollback(calculateSize(length));
 
-            return this;
-        }
+        foreach (i, T; Types)
+            unpack(objects[i]);
+        // unpack(objects);  // slow :(
+
+        return this;
     }
-    /*
-     * @@@BUG@@@ http://d.puremagic.com/issues/show_bug.cgi?id=2460
-    ref Unpacker unpack(Types...)(ref Types objects) if (Types.length > 1)
-    { // do stuff }
-     */
+
+
+    /// ditto
+    ref Unpacker unpackMap(Types...)(ref Types objects)
+    {
+        static assert(Types.length % 2 == 1, "The number of arguments must be even");
+
+        auto length = beginMap();
+        if (length != Types.length / 2)
+            rollback(calculateSize(length));
+
+        foreach (i, T; Types)
+            unpack(objects[i]);
+
+        return this;
+    }
 
 
     /**
-     * Deserializes type-information of container.
+     * Deserializes the type-information of container.
+     *
+     * These methods don't deserialize contents.
+     * You need to call unpack method to deserialize contents at your own risk.
+     * -----
+     * // serialized data is [1, "Hi!"];
+     * int num;
+     * unpacker.beginArray(2).unpack(num);  // num is 1
+     *
+     * // other operation
+     *
+     * string str;
+     * unpacker.unpack(str);  // str is "Hi!"
+     * -----
      *
      * Returns:
      *  the container size.
      */
-    size_t unpackArray()
+    @safe
+    size_t beginArray()
     {
         canRead(Offset, 0);
         const  header = read();
@@ -2435,7 +2031,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
             case Format.NIL:
                 break;
             default:
-                rollback(0);
+                rollback();
             }
         }
 
@@ -2444,7 +2040,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
 
 
     /// ditto
-    size_t unpackMap()
+    @safe
+    size_t beginMap()
     {
         canRead(Offset, 0);
         const  header = read();
@@ -2465,68 +2062,11 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
             case Format.NIL:
                 break;
             default:
-                rollback(0);
+                rollback();
             }
         }
 
         return length;
-    }
-
-
-    /// ditto
-    size_t unpackRaw()
-    {
-        canRead(Offset, 0);
-        const  header = read();
-        size_t length;
-
-        if (0xa0 <= header && header <= 0xbf) {
-            length = header & 0x1f;
-        } else {
-            switch (header) {
-            case Format.RAW16:
-                canRead(ushort.sizeof);
-                length = load16To!size_t(read(ushort.sizeof));
-                break;
-            case Format.RAW32:
-                canRead(uint.sizeof);
-                length = load32To!size_t(read(uint.sizeof));
-                break;
-            case Format.NIL:
-                break;
-            default:
-                rollback(0);
-            }
-        }
-
-        return length;
-    }
-
-
-    /**
-     * Deserializes nil object and assigns to $(D_PARAM value).
-     *
-     * Params:
-     *  value = the reference of value to assign.
-     *
-     * Returns:
-     *  this to method chain.
-     *
-     * Throws:
-     *  UnpackException when doesn't read from buffer or precision loss occurs and
-     *  InvalidTypeException when $(D_PARAM T) type doesn't match serialized type.
-     */
-    ref Unpacker unpackNil(T)(ref T value)
-    {
-        canRead(Offset, 0);
-        const header = read();
-
-        if (header == Format.NIL)
-            value = null;
-        else
-            rollback(0);
-
-        return this;
     }
 
 
@@ -2538,7 +2078,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
      * Example:
      * -----
      * // serialized data is "[1, 2][3, 4][5, 6][...".
-     * auto unpacker = unpacker!(UnpackerType.DIRECT)(serializedData);
+     * auto unpacker = unpacker!(UnpackerType.direct)(serializedData);
      * foreach (n, d; &unpacker.scan!(int, int))  // == "foreach (int n, int d; unpacker)"
      *     writeln(n, d); // 1st loop "1, 2", 2nd loop "3, 4"...
      * -----
@@ -2555,13 +2095,13 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
         int result;
 
         while (used_ - offset_) {
-            auto length = unpackArray();
+            auto length = beginArray();
             if (length != Types.length)
-                rollback(length < 16 ? 0 : length < 65536 ? ushort.sizeof : uint.sizeof);
+                rollback(calculateSize(length));
 
             Types objects;
             foreach (i, T; Types)
-                unpack!(T)(objects[i]);
+                unpack(objects[i]);
 
             result = dg(objects);
             if (result)
@@ -2572,12 +2112,42 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     }
 
 
-    /**
+  private:
+    /*
+     * Deserializes nil object and assigns to $(D_PARAM value).
+     *
+     * Params:
+     *  value = the reference of value to assign.
+     *
+     * Returns:
+     *  self, i.e. for method chaining.
+     *
+     * Throws:
+     *  UnpackException when doesn't read from buffer or precision loss occurs and
+     *  InvalidTypeException when $(D_PARAM T) type doesn't match serialized type.
+     */
+    @safe
+    ref Unpacker unpackNil(T)(ref T value)
+    {
+        canRead(Offset, 0);
+        const header = read();
+
+        if (header == Format.NIL)
+            value = null;
+        else
+            rollback();
+
+        return this;
+    }
+
+
+    /*
      * Next object is nil?
      *
      * Returns:
      *  true if next object is nil.
      */
+    @safe
     bool checkNil()
     {
         canRead(Offset, 0);
@@ -2586,7 +2156,18 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     }
 
 
-  private:
+    /*
+     * Calculates the format size of container length.
+     */
+    size_t calculateSize(bool rawType = false)(in size_t length)
+    {
+        static if (rawType)
+            return length < 32 ? 0 : length < 65536 ? ushort.sizeof : uint.sizeof;
+        else
+            return length < 16 ? 0 : length < 65536 ? ushort.sizeof : uint.sizeof;
+    }
+
+
     /*
      * Reading test.
      *
@@ -2597,7 +2178,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
      * Throws:
      *  UnpackException when doesn't read from buffer.
      */
-    @safe void canRead(in size_t size, in size_t offset = Offset)
+    @safe
+    void canRead(in size_t size, in size_t offset = Offset)
     {
         if (used_ - offset_ < size) {
             if (offset)
@@ -2611,7 +2193,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     /*
      * Reads value from buffer and advances offset.
      */
-    @safe ubyte read()
+    @safe
+    nothrow ubyte read()
     {
         return buffer_[offset_++];
     }
@@ -2620,7 +2203,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
     /*
      * Reads value from buffer and advances offset.
      */
-    @safe ubyte[] read(in size_t size)
+    @safe
+    nothrow ubyte[] read(in size_t size)
     {
         auto result = buffer_[offset_..offset_ + size];
 
@@ -2631,9 +2215,10 @@ struct Unpacker(UnpackerType Type : UnpackerType.DIRECT)
 
 
     /*
-     * Rollbacks offset and throws exception.
+     * Do rollback and throws exception.
      */
-    @safe void rollback(in size_t size)
+    @safe
+    void rollback(in size_t size = 0)
     {
         offset_ -= size + Offset;
         onInvalidType();
@@ -2650,7 +2235,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
+        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -2664,7 +2249,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
+        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -2678,7 +2263,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
+        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -2695,10 +2280,27 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
+        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
         unpacker.unpack(result);
 
         assert(test == result);
+    }
+    { // pointer
+        mixin DefinePacker;
+
+        Tuple!(ulong, long, double) origin, values = tuple(ulong.max, long.min, double.min);
+        Tuple!(ulong*, long*, double*) 
+            result = tuple(&origin.field[0], &origin.field[1], &origin.field[2]),
+            test   = tuple(&values.field[0], &values.field[1], &values.field[2]);
+
+        packer.pack(test);
+
+        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+        unpacker.unpack(result);
+
+        foreach (i, v; test.field)
+            assert(*v == *result.field[i]);
+        assert(origin == values);
     }
     { // enum
         enum   : float { D = 0.5 }
@@ -2711,7 +2313,7 @@ unittest
 
         packer.pack(D, e);
 
-        auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
+        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
         unpacker.unpack(resultF, resultE);
 
         assert(f == resultF);
@@ -2726,7 +2328,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
+        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -2737,10 +2339,10 @@ unittest
             {
                 uint num;
 
-                void mp_pack(P)(ref P p) const { p.packArray(1); p.pack(num); }
-                void mp_unpack(ref Unpacker!(UnpackerType.DIRECT) u)
+                void toMsgpack(P)(ref P p) const { p.packArray(num); }
+                void fromMsgpack(ref Unpacker!(UnpackerType.direct) u)
                 { 
-                    assert(u.unpackArray == 1);
+                    assert(u.beginArray() == 1);
                     u.unpack(num);
                 }
             }
@@ -2749,7 +2351,7 @@ unittest
 
             packer.pack(test);
 
-            auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
+            auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
             unpacker.unpack(result);
 
             assert(test.num == result.num);
@@ -2761,10 +2363,10 @@ unittest
 
                 this(uint n) { num = n; }
 
-                void mp_pack(P)(ref P p) const { p.packArray(1); p.pack(num - 1); }
-                void mp_unpack(ref Unpacker!(UnpackerType.DIRECT) u)
+                void toMsgpack(P)(ref P p) const { p.packArray(num - 1); }
+                void fromMsgpack(ref Unpacker!(UnpackerType.direct) u)
                 {
-                    assert(u.unpackArray == 1);
+                    assert(u.beginArray() == 1);
                     u.unpack(num);
                 }
             }
@@ -2773,7 +2375,7 @@ unittest
 
             packer.pack(test);
 
-            auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
+            auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
             unpacker.unpack(result, ushort.max);
 
             assert(test.num == result.num + 1);
@@ -2786,12 +2388,11 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
+        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
 
         uint u; long l; double d;
 
-        auto size = unpacker.unpackArray();
-        unpacker.unpack(u, l, d);
+        unpacker.unpackArray(u, l, d);
 
         assert(test == tuple(u, l, d));
     }
@@ -2801,10 +2402,10 @@ unittest
         foreach (i; 0..2) {
             mixin DefinePacker;
             packer.pack(tuple(1, 0.5, "Hi!"));
-            data ~= packer.buffer.data;
+            data ~= packer.stream.data;
         }
 
-        foreach (n, d, s; &unpacker!(UnpackerType.DIRECT)(data).scan!(int, double, string)) {
+        foreach (n, d, s; &unpacker!(UnpackerType.direct)(data).scan!(int, double, string)) {
             assert(n == 1);
             assert(d == 0.5);
             assert(s == "Hi!");
@@ -2818,124 +2419,140 @@ unittest
 
 /**
  * $(D MessagePack) object type
+ */
+enum MPType
+{
+    nil,       /// nil(null in D)
+    boolean,   /// true, false
+    unsigned,  /// positive fixnum, uint 8, uint 16, uint 32, uint 64
+    signed,    /// negative fixnum, int 8, int 16, int 32, int 64
+    floating,  /// float, double, real
+    array,     /// fix array, array 16, array 32
+    map,       /// fix map, map 16, map 32
+    raw        /// fix raw, raw 16, raw 32
+}
+
+
+/**
+ * $(D MPObject) is a $(D MessagePack) object representation
  *
- * See_Also:
- *  $(LINK2 http://redmine.msgpack.org/projects/msgpack/wiki/FormatSpec, MessagePack Specificaton)
+ * Example:
+ * -----
+ * auto unpacker = unpacker(pack(1, 0.1L) ~ pack(true) ~ pack("foobarbaz"));
+ *
+ * foreach (unpacked; unpacker) {
+ *     if (unpacked.type == MPType.array) {
+ *         foreach (obj; unpacked) {
+ *             switch (obj.type) {
+ *             case MPType.unsigned: writeln(obj.as!(uint)); break;
+ *             case MPType.floating:            writeln(obj.as!(real)); break;
+ *             defalut:
+ *                 throw new Exception("Unknown type");
+ *             }
+ *         }
+ *     } else {
+ *         if (unpacked.type == MPType.boolean)
+ *             writeln(unpacked.as!(bool));
+ *         else
+ *             writeln("Message: ", unpacked.as!(string));
+ *     }
+ * }
+ * -----
  */
-enum mp_Type
-{
-    NIL,               /// nil
-    BOOLEAN,           /// true, false
-    POSITIVE_INTEGER,  /// positive fixnum, uint 8, uint 16, uint 32, uint 64
-    NEGATIVE_INTEGER,  /// negative fixnum, int 8, int 16, int 32, int 64
-    FLOAT,             /// float, double, real
-    ARRAY,             /// fix array, array 16, array 32
-    MAP,               /// fix map, map 16, map 32
-    RAW                /// fix raw, raw 16, raw 32
-}
-
-
-/**
- * $(D InvalidTypeException) is thrown on type errors
- */
-class InvalidTypeException : Exception
-{
-    this(string message)
-    {
-        super(message);
-    }
-}
-
-
-/**
- * $(D mp_Object) is a $(D MessagePack) Object representation
- */
-struct mp_Object
+struct MPObject
 {
     /**
      * msgpack value representation
      */
     static union Value
     {
-        bool          boolean;   /// corresponding to mp_Type.BOOLEAN
-        ulong         uinteger;  /// corresponding to mp_Type.POSITIVE_INTEGER
-        long          integer;   /// corresponding to mp_Type.NEGATIVE_INTEGER
-        real          floating;  /// corresponding to mp_Type.FLOAT
-        mp_Object[]   array;     /// corresponding to mp_Type.ARRAY
-        mp_KeyValue[] map;       /// corresponding to mp_Type.MAP
-        ubyte[]       raw;       /// corresponding to mp_Type.RAW
+        bool               boolean;   /// corresponding to MPType.boolean
+        ulong              uinteger;  /// corresponding to MPType.unsigned
+        long               integer;   /// corresponding to MPType.signed
+        real               floating;  /// corresponding to MPType.floating
+        MPObject[]         array;     /// corresponding to MPType.array
+        MPObject[MPObject] map;       /// corresponding to MPType.map
+        ubyte[]            raw;       /// corresponding to MPType.raw
     }
 
 
-    mp_Type type;  /// represents object type 
-    Value   via;   /// represents real value
+    MPType type;  /// represents object type 
+    Value  via;   /// represents real value
 
 
     /**
-     * Constructs a $(D mp_Object) with arguments.
+     * Constructs a $(D MPObject) with arguments.
      *
      * Params:
-     *  value   = the real content.
-     *  mp_type = the type of object.
+     *  value = the real content.
+     *  type  = the type of object.
      */
-    @safe this(mp_Type mp_type = mp_Type.NIL)
+    @safe
+    this(MPType type = MPType.nil)
     {
-        type = mp_type;
+        this.type = type;
     }
 
 
     /// ditto
-    @safe this(bool value, mp_Type mp_type = mp_Type.BOOLEAN)
+    @safe
+    this(bool value, MPType type = MPType.boolean)
     {
-        this(mp_type);
+        this(type);
         via.boolean = value;
     }
 
 
     /// ditto
-    @safe this(ulong value, mp_Type mp_type = mp_Type.POSITIVE_INTEGER)
+    @safe
+    this(ulong value, MPType type = MPType.unsigned)
     {
-        this(mp_type);
+        this(type);
         via.uinteger = value;
     }
 
 
     /// ditto
-    @safe this(long value, mp_Type mp_type = mp_Type.NEGATIVE_INTEGER)
+    @safe
+    this(long value, MPType type = MPType.signed)
     {
-        this(mp_type);
+        this(type);
         via.integer = value;
     }
 
 
     /// ditto
-    @safe this(real value, mp_Type mp_type = mp_Type.FLOAT)
+    @safe
+    this(real value, MPType type = MPType.floating)
     {
-        this(mp_type);
+        this(type);
         via.floating = value;
     }
 
 
     /// ditto
-    @safe this(mp_Object[] value, mp_Type mp_type = mp_Type.ARRAY)
+    @safe
+    this(MPObject[] value, MPType type = MPType.array)
     {
-        this(mp_type);
+        this(type);
         via.array = value;
     }
 
 
     /// ditto
-    @safe this(mp_KeyValue[] value, mp_Type mp_type = mp_Type.MAP)
+    @safe
+    this(MPObject[MPObject] value, MPType type = MPType.map)
     {
-        this(mp_type);
+        this(type);
         via.map = value;
     }
 
 
     /// ditto
-    @safe this(ubyte[] value, mp_Type mp_type = mp_Type.RAW)
+    @safe
+    this(ubyte[] value, MPType type = MPType.raw)
     {
-        this(mp_type);
+        this(type);
         via.raw = value;
     }
 
@@ -2952,22 +2569,24 @@ struct mp_Object
      * NOTE:
      *  Current implementation uses cast.
      */
-    @property @safe T as(T)() if (is(T == bool))
+    @property @safe
+    T as(T)() if (is(T == bool))
     {
-        if (type != mp_Type.BOOLEAN)
+        if (type != MPType.boolean)
             onCastError();
 
-        return cast(bool)via.boolean;
+        return via.boolean;
     }
 
 
     /// ditto
-    @property @safe T as(T)() if (isIntegral!T)
+    @property @safe
+    T as(T)() if (isIntegral!T)
     {
-        if (type == mp_Type.POSITIVE_INTEGER)
+        if (type == MPType.unsigned)
             return cast(T)via.uinteger;
 
-        if (type == mp_Type.NEGATIVE_INTEGER)
+        if (type == MPType.signed)
             return cast(T)via.integer;
 
         onCastError();
@@ -2977,9 +2596,10 @@ struct mp_Object
 
 
     /// ditto
-    @property @safe T as(T)() if (isFloatingPoint!T)
+    @property @safe
+    T as(T)() if (isFloatingPoint!T)
     {
-        if (type != mp_Type.FLOAT)
+        if (type != MPType.floating)
             onCastError();
 
         return cast(T)via.floating;
@@ -2987,27 +2607,29 @@ struct mp_Object
 
 
     /// ditto
-    @property @safe T as(T)() if (is(Unqual!T == enum))
+    @property @safe
+    T as(T)() if (is(Unqual!T == enum))
     {
         return cast(T)as!(OriginalType!T);
     }
 
 
     /// ditto
-    @property @safe T as(T)() if (isArray!T)
+    @property @safe
+    T as(T)() if (isArray!T)
     {
-        if (type == mp_Type.NIL)
+        alias typeof(T.init[0]) V;
+
+        if (type == MPType.nil)
             return null;
 
-        static if (isSomeString!T) {
-            if (type != mp_Type.RAW)
+        static if (isByte!V || isSomeChar!V) {
+            if (type != MPType.raw)
                 onCastError();
 
             return cast(T)via.raw;
         } else {
-            alias typeof(T.init[0]) V;
-
-            if (type != mp_Type.ARRAY)
+            if (type != MPType.array)
                 onCastError();
 
             V[] array;
@@ -3021,21 +2643,22 @@ struct mp_Object
 
 
     /// ditto
-    @property @safe T as(T)() if (isAssociativeArray!T)
+    @property @trusted
+    T as(T)() if (isAssociativeArray!T)
     {
         alias typeof(T.init.keys[0])   K;
         alias typeof(T.init.values[0]) V;
 
-        if (type == mp_Type.NIL)
+        if (type == MPType.nil)
             return null;
 
-        if (type != mp_Type.MAP)
+        if (type != MPType.map)
             onCastError();
 
         V[K] map;
 
-        foreach (elem; via.map)
-            map[elem.key.as!(K)] = elem.value.as!(V);
+        foreach (key, value; via.map)
+            map[key.as!(K)] = value.as!(V);
 
         return map;
     }
@@ -3044,12 +2667,12 @@ struct mp_Object
     /**
      * Converts to $(D_PARAM T) type.
      *
-     * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D mp_unpack) method.
-     * $(D mp_unpack) signature is:
+     * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D fromMsgpack) method.
+     * $(D fromMsgpack) signature is:
      * -----
-     * void mp_unpack(mp_Object object)
+     * void fromMsgpack(MPObject object)
      * -----
-     * Assumes $(D std.typecons.Tuple) if $(D_KEYWORD struct) doens't implement $(D mp_unpack).
+     * Assumes $(D std.typecons.Tuple) if $(D_KEYWORD struct) doens't implement $(D fromMsgpack).
      *
      * Params:
      *  args = arguments to class constructor(class only).
@@ -3057,29 +2680,31 @@ struct mp_Object
      * Returns:
      *  converted value.
      */
-    @property /* @safe */ T as(T, Args...)(Args args) if (is(T == class))
+    @property /* @safe */
+    T as(T, Args...)(Args args) if (is(T == class))
     {
-        static if (!__traits(compiles, { T t; t.mp_unpack(this); }))
+        static if (!__traits(compiles, { T t; t.fromMsgpack(this); }))
             static assert(false, T.stringof ~ " is not a MessagePackable object");
 
-        if (type == mp_Type.NIL)
+        if (type == MPType.nil)
             return null;
 
         T object = new T(args);
 
-        object.mp_unpack(this);
+        object.fromMsgpack(this);
 
         return object;
     }
 
 
     /// ditto
-    @property /* @safe */ T as(T)() if (is(T == struct))
+    @property /* @safe */
+    T as(T)() if (is(T == struct))
     {
         T obj;
 
-        static if (__traits(compiles, { T t; t.mp_unpack(this); })) {
-            obj.mp_unpack(this);
+        static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
+            obj.fromMsgpack(this);
         } else {
             foreach (i, Type; T.Types)
                 obj.field[i] = via.array[i].as!(Type);
@@ -3093,39 +2718,39 @@ struct mp_Object
      * Special method called by $(D Packer).
      *
      * Params:
-     *  packer = a serializer.
+     *  packer = a MessagePack serializer.
      */
-    void mp_pack(Packer)(ref Packer packer) const
+    void toMsgpack(Packer)(ref Packer packer) const
     {
         final switch (type) {
-        case mp_Type.NIL:
+        case MPType.nil:
             packer.packNil();
             break;
-        case mp_Type.BOOLEAN:
+        case MPType.boolean:
             packer.pack(via.boolean);
             break;
-        case mp_Type.POSITIVE_INTEGER:
+        case MPType.unsigned:
             packer.pack(via.uinteger);
             break;
-        case mp_Type.NEGATIVE_INTEGER:
+        case MPType.signed:
             packer.pack(via.integer);
             break;
-        case mp_Type.FLOAT:
+        case MPType.floating:
             packer.pack(via.floating);
             break;
-        case mp_Type.RAW:
+        case MPType.raw:
             packer.pack(via.raw);
             break;
-        case mp_Type.ARRAY:
-            packer.packArray(via.array.length);
+        case MPType.array:
+            packer.beginArray(via.array.length);
             foreach (elem; via.array)
-                elem.mp_pack(packer);
+                elem.toMsgpack(packer);
             break;
-        case mp_Type.MAP:
-            packer.packMap(via.map.length);
-            foreach (kv; via.map) {
-                kv.key.mp_pack(packer);
-                kv.value.mp_pack(packer);
+        case MPType.map:
+            packer.beginMap(via.map.length);
+            foreach (key, value; via.map) {
+                key.toMsgpack(packer);
+                value.toMsgpack(packer);
             }
             break;
         }
@@ -3135,28 +2760,30 @@ struct mp_Object
     /**
      * Comparison for equality.
      */
-    @safe bool opEquals(Tdummy = void)(ref const mp_Object other) const
+    @safe
+    bool opEquals(Tdummy = void)(ref const MPObject other) const
     {
         if (type != other.type)
             return false;
 
-        final switch (type) {
-        case mp_Type.NIL:              return true;
-        case mp_Type.BOOLEAN:          return via.boolean  == other.via.boolean;
-        case mp_Type.POSITIVE_INTEGER: return via.uinteger == other.via.uinteger;
-        case mp_Type.NEGATIVE_INTEGER: return via.integer  == other.via.integer;
-        case mp_Type.FLOAT:            return via.floating == other.via.floating;
-        case mp_Type.RAW:              return via.raw      == other.via.raw;
-        case mp_Type.ARRAY:            return via.array    == other.via.array;
-        case mp_Type.MAP:              return via.map      == other.via.map;
+        final switch (other.type) {
+        case MPType.nil:              return true;
+        case MPType.boolean:          return opEquals(other.via.boolean);
+        case MPType.unsigned: return opEquals(other.via.uinteger);
+        case MPType.signed: return opEquals(other.via.integer);
+        case MPType.floating:            return opEquals(other.via.floating);
+        case MPType.raw:              return opEquals(other.via.raw);
+        case MPType.array:            return opEquals(other.via.array);
+        case MPType.map:              return opEquals(other.via.map);
         }
     }
 
 
     /// ditto
-    @safe bool opEquals(T : bool)(in T other) const
+    @safe
+    bool opEquals(T : bool)(in T other) const
     {
-        if (type != mp_Type.BOOLEAN)
+        if (type != MPType.boolean)
             return false;
 
         return via.boolean == other;
@@ -3164,15 +2791,16 @@ struct mp_Object
 
 
     /// ditto
-    @safe bool opEquals(T : ulong)(in T other) const
+    @safe
+    bool opEquals(T : ulong)(in T other) const
     {
         static if (__traits(isUnsigned, T)) {
-            if (type != mp_Type.POSITIVE_INTEGER)
+            if (type != MPType.unsigned)
                 return false;
 
             return via.uinteger == other;
         } else {
-            if (type != mp_Type.NEGATIVE_INTEGER)
+            if (type != MPType.signed)
                 return false;
 
             return via.integer == other;
@@ -3181,9 +2809,10 @@ struct mp_Object
 
 
     /// ditto
-    @safe bool opEquals(T : real)(in T other) const
+    @safe
+    bool opEquals(T : real)(in T other) const
     {
-        if (type != mp_Type.FLOAT)
+        if (type != MPType.floating)
             return false;
 
         return via.floating == other;
@@ -3191,9 +2820,10 @@ struct mp_Object
 
 
     /// ditto
-    @safe bool opEquals(T : mp_Object[])(in T other) const
+    @safe
+    bool opEquals(T : MPObject[])(in T other) const
     {
-        if (type != mp_Type.ARRAY)
+        if (type != MPType.array)
             return false;
 
         return via.array == other;
@@ -3201,19 +2831,31 @@ struct mp_Object
 
 
     /// ditto
-    @safe bool opEquals(T : mp_KeyValue[])(in T other) const
+    @trusted
+    bool opEquals(T : MPObject[MPObject])(in T other) const
     {
-        if (type != mp_Type.MAP)
+        if (type != MPType.map)
             return false;
 
-        return via.map == other;
+        // This comparison is instead of default comparison because 'via.map == other' raises "Access Violation".
+        foreach (key, value; via.map) {
+            if (key in other) {
+                if (other[key] != value)
+                    return false;
+            } else {
+                return false;
+            }
+        }
+
+        return true;
     }
 
 
     /// ditto
-    @safe bool opEquals(T : ubyte[])(in T other) const
+    @safe
+    bool opEquals(T : ubyte[])(in T other) const
     {
-        if (type != mp_Type.RAW)
+        if (type != MPType.raw)
             return false;
 
         return via.raw == other;
@@ -3221,49 +2863,21 @@ struct mp_Object
 }
 
 
-/**
- * $(D mp_KeyValue) is a $(D MessagePack) Map Object representation
- */
-struct mp_KeyValue
-{
-    mp_Object key;    /// represents key of Map
-    mp_Object value;  /// represents value of Map
-
-
-    /**
-     * Comparison for equality.
-     */
-    @safe bool opEquals(ref const mp_KeyValue other) const
-    {
-        return key == other.key && value == other.value;
-    }
-}
-
-
-private:
-
-
-@safe void onCastError()
-{
-    throw new InvalidTypeException("Attempt to cast with another type");
-}
-
-
 unittest
 {
     // nil
-    mp_Object object = mp_Object();
-    mp_Object other  = mp_Object();
+    MPObject object = MPObject();
+    MPObject other  = MPObject();
 
     assert(object      == other);
-    assert(object.type == mp_Type.NIL);
+    assert(object.type == MPType.nil);
 
     // boolean
-    object = mp_Object(true);
-    other  = mp_Object(false);
+    object = MPObject(true);
+    other  = MPObject(false);
 
     assert(object           != other);
-    assert(object.type      == mp_Type.BOOLEAN);
+    assert(object.type      == MPType.boolean);
     assert(object.as!(bool) == true);
     assert(other            == false);
 
@@ -3273,77 +2887,75 @@ unittest
     } catch (InvalidTypeException e) { }
 
     // unsigned integer
-    object = mp_Object(10UL);
-    other  = mp_Object(10UL);
+    object = MPObject(10UL);
+    other  = MPObject(10UL);
 
     assert(object           == other);
-    assert(object.type      == mp_Type.POSITIVE_INTEGER);
+    assert(object.type      == MPType.unsigned);
     assert(object.as!(uint) == 10);
     assert(other            == 10UL);
 
     // signed integer
-    object = mp_Object(-20L);
-    other  = mp_Object(-10L);
+    object = MPObject(-20L);
+    other  = MPObject(-10L);
 
     assert(object          != other);
-    assert(object.type     == mp_Type.NEGATIVE_INTEGER);
+    assert(object.type     == MPType.signed);
     assert(object.as!(int) == -20);
     assert(other           == -10L);
 
+    // enum
+    enum E : int { F = -20 }
+
+    E e = object.as!(E);
+
+    assert(e == E.F);
+
     // floating point
-    object = mp_Object(0.1e-10L);
-    other  = mp_Object(0.1e-20L);
+    object = MPObject(0.1e-10L);
+    other  = MPObject(0.1e-20L);
 
     assert(object           != other);
-    assert(object.type      == mp_Type.FLOAT);
+    assert(object.type      == MPType.floating);
     assert(object.as!(real) == 0.1e-10L);
     assert(other            == 0.1e-20L);
 
-    // enum
-    enum E : real { F = 0.1e-10L }
-
-    E e1 = object.as!(E);
-    E e2 = other.as!(E);
-
-    assert(e1 == E.F);
-    assert(e2 != E.F);
-
     // raw
-    object = mp_Object(cast(ubyte[])[72, 105, 33]);
-    other  = mp_Object(cast(ubyte[])[72, 105, 33]);
+    object = MPObject(cast(ubyte[])[72, 105, 33]);
+    other  = MPObject(cast(ubyte[])[72, 105, 33]);
 
     assert(object             == other);
-    assert(object.type        == mp_Type.RAW);
+    assert(object.type        == MPType.raw);
     assert(object.as!(string) == "Hi!");
     assert(other              == cast(ubyte[])[72, 105, 33]);
 
     // array
-    auto t = mp_Object(cast(ubyte[])[72, 105, 33]);
-    object = mp_Object([t]);
-    other  = mp_Object([t]);
+    auto t = MPObject(cast(ubyte[])[72, 105, 33]);
+    object = MPObject([t]);
+    other  = MPObject([t]);
 
     assert(object               == other);
-    assert(object.type          == mp_Type.ARRAY);
+    assert(object.type          == MPType.array);
     assert(object.as!(string[]) == ["Hi!"]);
     assert(other                == [t]);
 
     // map
-    object = mp_Object([mp_KeyValue(mp_Object(1L), mp_Object(2L))]);
-    other  = mp_Object([mp_KeyValue(mp_Object(1L), mp_Object(1L))]);
+    object = MPObject([MPObject(1L):MPObject(2L)]);
+    other  = MPObject([MPObject(1L):MPObject(1L)]);
 
     assert(object               != other);
-    assert(object.type          == mp_Type.MAP);
+    assert(object.type          == MPType.map);
     assert(object.as!(int[int]) == [1:2]);
-    assert(other                == [mp_KeyValue(mp_Object(1L), mp_Object(1L))]);
+    assert(other                == [MPObject(1L):MPObject(1L)]);
 
-    object = mp_Object(10UL);
+    object = MPObject(10UL);
 
     // struct
     static struct S
     {
         ulong num;
 
-        void mp_unpack(mp_Object object) { num = object.via.uinteger; }
+        void fromMsgpack(MPObject object) { num = object.via.uinteger; }
     }
 
     S s = object.as!(S);
@@ -3354,14 +2966,14 @@ unittest
     {
         ulong num;
 
-        void mp_unpack(mp_Object object) { num = object.via.uinteger; }
+        void fromMsgpack(MPObject object) { num = object.via.uinteger; }
     }
 
     C c = object.as!(C);
     assert(c.num == 10);
 
     // std.typecons.Tuple
-    object = mp_Object([mp_Object(true), mp_Object(1UL), mp_Object(cast(ubyte[])"Hi!")]);
+    object = MPObject([MPObject(true), MPObject(1UL), MPObject(cast(ubyte[])"Hi!")]);
 
     auto tuple = object.as!(Tuple!(bool, uint, string));
     assert(tuple.field[0] == true);
@@ -3381,7 +2993,7 @@ unittest
  */
 struct Unpacked
 {
-    mp_Object object;  /// deserialized object
+    MPObject object;  /// deserialized object
 
     alias object this;
 
@@ -3392,7 +3004,8 @@ struct Unpacked
      * Params:
      *  object = a deserialized object.
      */
-    @safe this(mp_Object object)
+    @safe
+    this(MPObject object)
     {
         this.object = object;
     }
@@ -3404,9 +3017,10 @@ struct Unpacked
      * Returns:
      *  true if there are no more elements to be iterated.
      */
-    @property @safe nothrow bool empty() const  // std.array.empty isn't nothrow function
+    @property @safe
+    nothrow bool empty() const  // std.array.empty isn't nothrow function
     {
-        return (object.type == mp_Type.ARRAY) && !object.via.array.length;
+        return (object.type == MPType.array) && !object.via.array.length;
     }
 
 
@@ -3414,9 +3028,10 @@ struct Unpacked
      * Range primitive operation that returns the currently iterated element.
      *
      * Returns:
-     *  the deserialized $(D mp_Object).
+     *  the deserialized $(D MPObject).
      */
-    @property /* @safe */ ref mp_Object front()
+    @property /* @safe */
+    ref MPObject front()
     {
         return object.via.array.front;
     }
@@ -3425,10 +3040,30 @@ struct Unpacked
     /**
      * Range primitive operation that advances the range to its next element.
      */
-    /* @safe */ void popFront()
+    /* @safe */
+    void popFront()
     {
         object.via.array.popFront();
     }
+
+
+    /**
+     * Range primitive operation that returns the snapshot.
+     *
+     * Returns:
+     *  the snapshot of this MPObject.
+     */
+    @property @safe
+    Unpacked save()
+    {
+        return Unpacked(object);
+    }
+}
+
+
+unittest
+{
+    static assert(isForwardRange!Unpacked);
 }
 
 
@@ -3446,9 +3081,9 @@ struct Unpacked
  * // appends new data to buffer if pre execute() call didn't finish deserialization.
  * unpacker.feed(newSerializedData);
  *
- * while(unpacker.execute()) {
+ * while (unpacker.execute()) {
  *     foreach (obj; unpacker.purge()) {
- *         // do stuff (obj is a mp_Object)
+ *         // do stuff (obj is a MPObject)
  *     }
  * }
  * 
@@ -3456,7 +3091,7 @@ struct Unpacked
  *     throw new Exception("Message is too large");
  * -----
  */
-struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
+struct Unpacker(UnpackerType Type : UnpackerType.stream)
 {
   private:
     /*
@@ -3511,8 +3146,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
         static struct Container
         {
             ContainerElement type;    // object container type
-            mp_Object        object;  // current object
-            mp_Object        key;     // for map object
+            MPObject         object;  // current object
+            MPObject         key;     // for map object
             size_t           count;   // container length
         }
 
@@ -3535,7 +3170,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
      *  target     = byte buffer to deserialize
      *  bufferSize = size limit of buffer size
      */
-    @safe this(in ubyte[] target, in size_t bufferSize = 8192)
+    @safe
+    this(in ubyte[] target, in size_t bufferSize = 8192)
     {
         initializeBuffer(target, bufferSize);
         initializeContext();
@@ -3548,7 +3184,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
      * Returns:
      *  the $(D Unpacked) object contains deserialized object.
      */
-    @property @safe Unpacked unpacked()
+    @property @safe
+    Unpacked unpacked()
     {
         return Unpacked(context_.stack[0].object);
     }
@@ -3557,7 +3194,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
     /**
      * Clears some states for next deserialization.
      */
-    @safe nothrow void clear()
+    @safe
+    nothrow void clear()
     {
         initializeContext();
 
@@ -3585,7 +3223,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
      * Returns:
      *  the $(D Unpacked) object contains deserialized object.
      */
-    @safe Unpacked purge()
+    @safe
+    Unpacked purge()
     {
         auto result = Unpacked(context_.stack[0].object);
 
@@ -3611,9 +3250,9 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
          * This Complexity for performance(avoid function call).
          */
 
-        bool      ret;
-        size_t    cur = offset_;
-        mp_Object obj;
+        bool     ret;
+        size_t   cur = offset_;
+        MPObject obj;
 
         // restores before state
         auto state =  context_.state;
@@ -3684,13 +3323,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
                         state = cast(State)(header & 0x1f);
                         break;
                     case Format.REAL:
-                        const realSize = buffer_[++cur];
-                        if (realSize == real.sizeof) {
-                            trail = real.sizeof;
-                            state = State.REAL;
-                        } else {
-                            throw new UnpackException("Real type on this environment is different from serialized real type.");
-                        }
+                        trail = RealSize;
+                        state = State.REAL;
                         break;
                     case Format.ARRAY16:
                     case Format.ARRAY32:
@@ -3711,7 +3345,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
                         callbackBool(obj, false);
                         goto Lpush;
                     default:
-                        onUnknownType();
+                        throw new UnpackException("Unknown type");
                     }
 
                     cur++;
@@ -3728,7 +3362,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
                 case State.FLOAT:
                     _f temp;
 
-                    temp.i = load32To!uint(buffer_[base..base + trail]);
+                    temp.i = load32To!uint(buffer_[base..base + trail]);                    
                     callbackFloat(obj, temp.f);
                     goto Lpush;
                 case State.DOUBLE:
@@ -3738,12 +3372,32 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
                     callbackFloat(obj, temp.f);
                     goto Lpush;
                 case State.REAL:
-                    _r temp; const expb = base + temp.fraction.sizeof;
+                    const expb = base + ulong.sizeof;
 
-                    temp.fraction = load64To!(typeof(temp.fraction))(buffer_[base..expb]);
-                    mixin("temp.exponent = load" ~ ES.stringof[0..2] ~ // delete u suffix
-                          "To!(typeof(temp.exponent))(buffer_[expb..expb + temp.exponent.sizeof]);");
-                    callbackFloat(obj, temp.f);
+                    version (NonX86)
+                    {
+                        CustomFloat!80 temp;
+
+                        const frac = load64To!ulong (buffer_[base..expb]);
+                        const exp  = load16To!ushort(buffer_[expb..expb + ushort.sizeof]);
+
+                        temp.significand = frac;
+                        temp.exponent    = exp & 0x7fff;
+                        temp.sign        = exp & 0x8000 ? true : false;
+
+                        // NOTE: temp.get!real is inf on non-x86 when deserialized value is larger than double.max.
+                        callbackFloat(obj, temp.get!real);
+                    }
+                    else
+                    {
+                        _r temp;
+
+                        temp.fraction = load64To!(typeof(temp.fraction))(buffer_[base..expb]);
+                        temp.exponent = load16To!(typeof(temp.exponent))(buffer_[expb..expb + temp.exponent.sizeof]);
+
+                        callbackFloat(obj, temp.f);
+                    }
+
                     goto Lpush;
                 case State.UINT8:
                     callbackUInt(obj, buffer_[base]);
@@ -3832,7 +3486,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
                 container.type = ContainerElement.MAP_VALUE;
                 break;
             case ContainerElement.MAP_VALUE:
-                container.object.via.map ~= mp_KeyValue(container.key, obj);
+                container.object.via.map[container.key] = obj;
                 if (--container.count == 0) {
                     obj = container.object;
                     top--;
@@ -3871,10 +3525,6 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
     /**
      * supports foreach. One loop provides $(D Unpacked) object contains execute() result.
      * This is convenient in case that $(D MessagePack) objects are continuous.
-     *
-     * NOTE:
-     *  Why opApply? Currently, D's Range is state-less.
-     *  I will change to Range if Phobos supports stream.
      */
     int opApply(scope int delegate(ref Unpacked) dg)
     {
@@ -3896,7 +3546,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
     /*
      * initializes internal stack environment.
      */
-    @safe nothrow void initializeContext()
+    @safe
+    nothrow void initializeContext()
     {
         context_.state        = State.HEADER;
         context_.trail        = 0;
@@ -3916,7 +3567,8 @@ struct Unpacker(UnpackerType Type : UnpackerType.STREAM)
  * Returns:
  *  a $(D Unpacker) object instantiated and initialized according to the arguments.
  */
-@safe Unpacker!(Type) unpacker(UnpackerType Type = UnpackerType.STREAM)(in ubyte[] target, in size_t bufferSize = 8192)
+@safe
+Unpacker!(Type) unpacker(UnpackerType Type = UnpackerType.stream)(in ubyte[] target, in size_t bufferSize = 8192)
 {
     return typeof(return)(target, bufferSize);
 }
@@ -3926,13 +3578,11 @@ unittest
 {
     // serialize
     mixin DefinePacker;
-    enum Size = mp_Type.max + 1;
 
-    packer.packArray(Size);
-    packer.packNil().packTrue().pack(1, -2, "Hi!", [1], [1:1], real.max);
+    packer.packArray(null, true, 1, -2, "Hi!", [1], [1:1], double.max);
 
     // deserialize
-    auto unpacker = unpacker(packer.buffer.data); unpacker.execute();
+    auto unpacker = unpacker(packer.stream.data); unpacker.execute();
     auto unpacked = unpacker.purge();
 
     // Range test
@@ -3942,19 +3592,19 @@ unittest
         foreach (obj; unpacked)
             i++;
 
-        assert(i == Size);
+        assert(i == unpacked.via.array.length);
     }
 
     auto result = unpacked.via.array;
 
-    assert(result[0].type          == mp_Type.NIL);
+    assert(result[0].type          == MPType.nil);
     assert(result[1].via.boolean   == true);
     assert(result[2].via.uinteger  == 1);
     assert(result[3].via.integer   == -2);
     assert(result[4].via.raw       == [72, 105, 33]);
     assert(result[5].as!(int[])    == [1]);
     assert(result[6].as!(int[int]) == [1:1]);
-    assert(result[7].as!(real)     == real.max);
+    assert(result[7].as!(double)   == double.max);
 }
 
 
@@ -3968,134 +3618,146 @@ private:
  *  object = the object to set
  *  value  = the content to set
  */
-@safe void callbackUInt(ref mp_Object object, ulong value)
+@safe
+void callbackUInt(ref MPObject object, ulong value)
 {
-    object.type         = mp_Type.POSITIVE_INTEGER;
+    object.type         = MPType.unsigned;
     object.via.uinteger = value;
 }
 
 
 /// ditto
-@safe void callbackInt(ref mp_Object object, long value)
+@safe
+void callbackInt(ref MPObject object, long value)
 {
-    object.type        = mp_Type.NEGATIVE_INTEGER;
+    object.type        = MPType.signed;
     object.via.integer = value;
 }
 
 
 /// ditto
-@safe void callbackFloat(ref mp_Object object, real value)
+@safe
+void callbackFloat(ref MPObject object, real value)
 {
-    object.type         = mp_Type.FLOAT;
+    object.type         = MPType.floating;
     object.via.floating = value;
 }
 
 
 /// ditto
-@safe void callbackRaw(ref mp_Object object, ubyte[] raw)
+@safe
+void callbackRaw(ref MPObject object, ubyte[] raw)
 {
-    object.type    = mp_Type.RAW;
+    object.type    = MPType.raw;
     object.via.raw = raw;
 }
 
 
 /// ditto
-void callbackArray(ref mp_Object object, size_t length)
+@trusted
+void callbackArray(ref MPObject object, size_t length)
 {
-    object.type = mp_Type.ARRAY;
+    object.type = MPType.array;
     object.via.array.length = 0;
     object.via.array.reserve(length);
 }
 
 
 /// ditto
-void callbackMap(ref mp_Object object, size_t length)
+@safe
+void callbackMap(ref MPObject object, lazy size_t length)
 {
-    object.type = mp_Type.MAP;
-    object.via.map.length = 0;
-    object.via.map.reserve(length);
+    object.type    = MPType.map;
+    object.via.map = null;  // clears previous result avoiding 'Access Violation'
 }
 
 
 /// ditto
-@safe void callbackNil(ref mp_Object object)
+@safe
+void callbackNil(ref MPObject object)
 {
-    object.type = mp_Type.NIL;
+    object.type = MPType.nil;
 }
 
 
 /// ditto
-@safe void callbackBool(ref mp_Object object, bool value)
+@safe
+void callbackBool(ref MPObject object, bool value)
 {
-    object.type        = mp_Type.BOOLEAN;
+    object.type        = MPType.boolean;
     object.via.boolean = value;
 }
 
 
 unittest
 {
-    mp_Object object;
+    MPObject object;
 
     // Unsigned integer
     callbackUInt(object, uint.max);
-    assert(object.type         == mp_Type.POSITIVE_INTEGER);
+    assert(object.type         == MPType.unsigned);
     assert(object.via.uinteger == uint.max);
 
     // Signed integer
     callbackInt(object, int.min);
-    assert(object.type        == mp_Type.NEGATIVE_INTEGER);
+    assert(object.type        == MPType.signed);
     assert(object.via.integer == int.min);
 
     // Floating point
     callbackFloat(object, real.max);
-    assert(object.type         == mp_Type.FLOAT);
+    assert(object.type         == MPType.floating);
     assert(object.via.floating == real.max);
 
     // Raw
     callbackRaw(object, cast(ubyte[])[1]);
-    assert(object.type    == mp_Type.RAW);
+    assert(object.type    == MPType.raw);
     assert(object.via.raw == cast(ubyte[])[1]);
 
     // Array
-    mp_Object[] array; array.reserve(16);
+    MPObject[] array; array.reserve(16);
 
     callbackArray(object, 16);
-    assert(object.type               == mp_Type.ARRAY);
+    assert(object.type               == MPType.array);
     assert(object.via.array.capacity == array.capacity);
 
     // Map
-    mp_KeyValue[] map; map.reserve(16);
+    MPObject[MPObject] map;
 
     callbackMap(object, 16);
-    assert(object.type             == mp_Type.MAP);
-    assert(object.via.map.capacity == map.capacity);
+    assert(object.type    == MPType.map);
+    assert(object.via.map == null);
 
     // NIL
     callbackNil(object);
-    assert(object.type == mp_Type.NIL);
+    assert(object.type == MPType.nil);
 
     // Bool
     callbackBool(object, true);
-    assert(object.type        == mp_Type.BOOLEAN);
+    assert(object.type        == MPType.boolean);
     assert(object.via.boolean == true);
+}
+
+
+private:
+
+
+/*
+ * A callback for type-mismatched error in cast conversion.
+ */
+@safe
+pure void onCastError()
+{
+    throw new InvalidTypeException("Attempt to cast with another type");
 }
 
 
 /*
  * A callback for type-mismatched error in deserialization process.
  */
-@safe void onInvalidType()
+@safe
+pure void onInvalidType()
 {
     throw new InvalidTypeException("Attempt to unpack with non-compatible type");
-}
-
-
-/*
- * A callback for finding unknown-format in deserialization process.
- */
-@safe void onUnknownType()
-{
-    throw new UnpackException("Unknown type");
 }
 
 
@@ -4119,16 +3781,14 @@ public:
  */
 ubyte[] pack(Args...)(in Args args)
 {
-    auto packer = packer(SimpleBuffer());
+    auto packer = packer(Appender!(ubyte[])());
 
-    static if (Args.length == 1) {
+    static if (Args.length == 1)
         packer.pack(args[0]);
-    } else {
-        packer.packArray(Args.length);
-        packer.pack(args);
-    }
+    else
+        packer.packArray(args);
 
-    return packer.buffer.data;
+    return packer.stream.data;
 }
 
 
@@ -4140,10 +3800,10 @@ unittest
 
     auto deserialized = unpack(pack(1, true, "Foo"));
 
-    assert(deserialized.type == mp_Type.ARRAY);
-    assert(deserialized.via.array[0].type == mp_Type.POSITIVE_INTEGER);
-    assert(deserialized.via.array[1].type == mp_Type.BOOLEAN);
-    assert(deserialized.via.array[2].type == mp_Type.RAW);
+    assert(deserialized.type == MPType.array);
+    assert(deserialized.via.array[0].type == MPType.unsigned);
+    assert(deserialized.via.array[1].type == MPType.boolean);
+    assert(deserialized.via.array[2].type == MPType.raw);
 }
 
 
@@ -4182,14 +3842,12 @@ Unpacked unpack(Tdummy = void)(in ubyte[] buffer)
  */
 void unpack(Args...)(in ubyte[] buffer, ref Args args)
 {
-    auto unpacker = unpacker!(UnpackerType.DIRECT)(buffer);
+    auto unpacker = unpacker!(UnpackerType.direct)(buffer);
 
-    static if (Args.length == 1) {
+    static if (Args.length == 1)
         unpacker.unpack(args[0]);
-    } else {
-        unpacker.unpackArray();
-        unpacker.unpack(args);
-    }
+    else
+        unpacker.unpackArray(args);
 }
 
 
@@ -4223,7 +3881,7 @@ unittest
 /**
  * Handy helper for creating MessagePackable object.
  *
- * mp_pack/mp_unpack are special methods for serialization/deserialization.
+ * toMsgpack / fromMsgpack are special methods for serialization / deserialization.
  * This template provides those methods to struct/class.
  *
  * Example:
@@ -4249,27 +3907,31 @@ mixin template MessagePackable(Members...)
          * Params:
          *  packer = the serializer to pack.
          */
-        void mp_pack(Packer)(ref Packer packer) const
+        void toMsgpack(Packer)(ref Packer packer) const
         {
-            packer.packArray(this.tupleof.length);
+            packer.beginArray(this.tupleof.length);
             foreach (member; this.tupleof)
                 packer.pack(member);
         }
 
 
         /**
-         * Deserializes $(D MessagePack) object to members for stream deserializer.
+         * Deserializes $(D MessagePack) object to members using MPObject.
          *
          * Params:
          *  object = the MessagePack object to unpack.
          *
          * Throws:
-         *  InvalidTypeException if $(D_PARAM object) is not Array type.
+         *  InvalidTypeException if $(D_PARAM object) is not an Array type.
          */
-        void mp_unpack(mp_Object object)
+        void fromMsgpack(MPObject object)
         {
-            if (object.type != mp_Type.ARRAY)
-                throw new InvalidTypeException("mp_Object must be Array type");
+            // enables if std.contracts.enforce is moved to object_.d
+            // enforceEx!InvalidTypeException(object.type == MPType.array, "MPObject must be Array type");
+            if (object.type != MPType.array)
+                throw new InvalidTypeException("MPObject must be an Array type");
+            if (object.via.array.length != this.tupleof.length)
+                throw new InvalidTypeException("The size of deserialized object is mismatched");
 
             foreach (i, member; this.tupleof)
                 this.tupleof[i] = object.via.array[i].as!(typeof(member));
@@ -4277,42 +3939,44 @@ mixin template MessagePackable(Members...)
 
 
         /**
-         * Deserializes $(D MessagePack) object to members for direct-conversion deserializer.
+         * Deserializes $(D MessagePack) object to members using direct-conversion deserializer.
          *
          * Params:
          *  object = the reference to direct-conversion deserializer.
          *
          * Throws:
-         *  InvalidTypeException if deserialized object size is mismatched.
+         *  InvalidTypeException if the size of deserialized object is mismatched.
          */
-        void mp_unpack(ref Unpacker!(UnpackerType.DIRECT) unpacker)
+        void fromMsgpack(ref Unpacker!(UnpackerType.direct) unpacker)
         {
-            auto length = unpacker.unpackArray();
+            auto length = unpacker.beginArray();
             if (length != this.tupleof.length)
-                throw new InvalidTypeException("Deserialized object size is mismatched");
+                throw new InvalidTypeException("The size of deserialized object is mismatched");
 
             foreach (i, member; this.tupleof)
                 unpacker.unpack(this.tupleof[i]);
         }
     } else {
         /**
-         * Member selecting version of mp_pack.
+         * Member selecting version of toMsgpack.
          */
-        void mp_pack(Packer)(ref Packer packer) const
+        void toMsgpack(Packer)(ref Packer packer) const
         {
-            packer.packArray(Members.length);
+            packer.beginArray(Members.length);
             foreach (member; Members)
                 packer.pack(mixin(member));
         }
 
 
         /**
-         * Member selecting version of mp_unpack for stream deserializer.
+         * Member selecting version of fromMsgpack for MPObject.
          */
-        void mp_unpack(mp_Object object)
+        void fromMsgpack(MPObject object)
         {
-            if (object.type != mp_Type.ARRAY)
-                throw new InvalidTypeException("mp_Object must be Array type");
+            if (object.type != MPType.array)
+                throw new InvalidTypeException("MPObject must be an Array type");
+            if (object.via.array.length != Members.length)
+                throw new InvalidTypeException("The size of deserialized object is mismatched");
 
             foreach (i, member; Members)
                 mixin(member ~ "= object.via.array[i].as!(typeof(" ~ member ~ "));");
@@ -4320,13 +3984,13 @@ mixin template MessagePackable(Members...)
 
 
         /**
-         * Member selecting version of mp_unpack for direct-converion deserializer.
+         * Member selecting version of fromMsgpack for direct-converion deserializer.
          */
-        void mp_unpack(ref Unpacker!(UnpackerType.DIRECT) unpacker)
+        void fromMsgpack(ref Unpacker!(UnpackerType.direct) unpacker)
         {
-            auto length = unpacker.unpackArray();
+            auto length = unpacker.beginArray();
             if (length != Members.length)
-                throw new InvalidTypeException("Deserialized object size is mismatched");
+                throw new InvalidTypeException("The size of deserialized object is mismatched");
 
             foreach (member; Members)
                 unpacker.unpack(mixin(member));
@@ -4346,18 +4010,18 @@ unittest
 
         mixin DefinePacker;
 
-        S orig = S(10, "Hi!"); orig.mp_pack(packer);
+        S orig = S(10, "Hi!"); orig.toMsgpack(packer);
 
         { // stream
-            auto unpacker = unpacker(packer.buffer.data); unpacker.execute();
+            auto unpacker = unpacker(packer.stream.data); unpacker.execute();
 
-            S result; result.mp_unpack(unpacker.unpacked);
+            S result; result.fromMsgpack(unpacker.unpacked);
 
             assert(result.num == 10);
             assert(result.str == "Hi!");
         }
         { // direct conversion
-            auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
+            auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
 
             S result; unpacker.unpack(result);
 
@@ -4378,17 +4042,17 @@ unittest
 
         mixin DefinePacker;
 
-        C orig = new C(10, "Hi!"); orig.mp_pack(packer);
+        C orig = new C(10, "Hi!"); orig.toMsgpack(packer);
 
         { // stream
-            auto unpacker = unpacker(packer.buffer.data); unpacker.execute();
+            auto unpacker = unpacker(packer.stream.data); unpacker.execute();
 
-            C result = new C; result.mp_unpack(unpacker.unpacked);
+            C result = new C; result.fromMsgpack(unpacker.unpacked);
 
             assert(result.num == 10);
         }
         { // direct conversion
-            auto unpacker = unpacker!(UnpackerType.DIRECT)(packer.buffer.data);
+            auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
 
             C result; unpacker.unpack(result);
 
@@ -4473,58 +4137,27 @@ union _d
 }
 
 
-static if (real.sizeof == 16) {
-    /*
-     * For real type serialization / deserialization on 128bit environment
-     */
-    union _r
+/*
+ * For real type serialization / deserialization
+ *
+ * 80-bit real is padded to 12 bytes(Linux) and 16 bytes(Mac).
+ * http://lists.puremagic.com/pipermail/digitalmars-d/2010-June/077394.html
+ */
+union _r
+{
+    real f;
+
+    struct
     {
-        real f;
-
-        struct
-        {
-            ulong fraction;
-            ulong exponent;  // includes sign
-        }
+        ulong  fraction;
+        ushort exponent;  // includes sign
     }
-
-    enum ES = ulong.sizeof * 8;  // exponent size as bits
-} else static if (real.sizeof == 12) {
-    /*
-     * For real type serialization / deserialization on 96bit environment
-     */
-    union _r
-    {
-        real f;
-
-        struct
-        {
-            ulong fraction;
-            uint  exponent;  // includes sign
-        }
-    }
-
-    enum ES = uint.sizeof * 8;  // exponent size as bits
-} else {
-    /*
-     * For real type serialization / deserialization on 80bit environment
-     */
-    union _r
-    {
-        real f;
-
-        struct
-        {
-            ulong  fraction;
-            ushort exponent;  // includes sign
-        }
-    }
-
-    enum ES = ushort.sizeof * 8;  // exponent size as bits
 }
 
+enum RealSize = 10;  // Real size is 80bit
 
-/**
+
+/*
  * Detects whether $(D_PARAM T) is a built-in byte type.
  */
 template isByte(T)
@@ -4545,6 +4178,18 @@ unittest
 }
 
 
+/*
+ * Gets asterisk string from pointer type
+ */
+template AsteriskOf(T)
+{
+    static if (is(T P == U*, U))
+        enum AsteriskOf = "*" ~ AsteriskOf!U;
+    else
+        enum AsteriskOf = "";
+}
+
+
 version (LittleEndian)
 {
     /*
@@ -4556,6 +4201,7 @@ version (LittleEndian)
      * Returns:
      *  the converted value.
      */
+    @trusted
     ushort convertEndianTo(size_t Bit, T)(in T value) if (Bit == 16)
     {
         return ntohs(cast(ushort)value);
@@ -4563,6 +4209,7 @@ version (LittleEndian)
 
 
     // ditto
+    @trusted
     uint convertEndianTo(size_t Bit, T)(in T value) if (Bit == 32)
     {
         return ntohl(cast(uint)value);
@@ -4570,6 +4217,7 @@ version (LittleEndian)
 
 
     // ditto
+    @trusted
     ulong convertEndianTo(size_t Bit, T)(in T value) if (Bit == 64)
     {
         // dmd has convert function?
@@ -4619,6 +4267,7 @@ else
     /*
      * Comapatible for LittleEndian environment.
      */
+    @safe
     ushort convertEndianTo(size_t Bit, T)(in T value) if (Bit == 16)
     {
         return cast(ushort)value;
@@ -4626,6 +4275,7 @@ else
 
 
     // ditto
+    @safe
     uint convertEndianTo(size_t Bit, T)(in T value) if (Bit == 32)
     {
         return cast(uint)value;
@@ -4633,6 +4283,7 @@ else
 
 
     // ditto
+    @safe
     ulong convertEndianTo(size_t Bit, T)(in T value) if (Bit == 64)
     {
         return cast(ulong)value;

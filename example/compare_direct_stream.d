@@ -8,8 +8,7 @@ import std.date;
 import std.stdio;
 import std.typecons;
 
-import msgpack.msgpack;
-import msgpack.unpacker;
+import std.msgpack;
 
 
 void main()
