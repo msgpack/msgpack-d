@@ -2989,7 +2989,7 @@ unittest
 
 
 /**
- * $(D Unpacked) is a $(D InputRange) wrapper for stream deserialization result
+ * $(D Unpacked) is a $(D Range) wrapper for stream deserialization result
  */
 struct Unpacked
 {
@@ -3005,14 +3005,14 @@ struct Unpacked
      *  object = a deserialized object.
      */
     @safe
-    this(MPObject object)
+    this(ref MPObject object)
     {
         this.object = object;
     }
 
 
     /**
-     * Range primitive operation that checks iteration state.
+     * InputRange primitive operation that checks iteration state.
      *
      * Returns:
      *  true if there are no more elements to be iterated.
@@ -3025,7 +3025,20 @@ struct Unpacked
 
 
     /**
-     * Range primitive operation that returns the currently iterated element.
+     * Range primitive operation that returns the length of the range.
+     *
+     * Returns:
+     *  the number of objects.
+     */
+    @property
+    size_t length()
+    {
+        return object.via.array.length;
+    }
+
+
+    /**
+     * InputRange primitive operation that returns the currently iterated element.
      *
      * Returns:
      *  the deserialized $(D MPObject).
@@ -3038,13 +3051,68 @@ struct Unpacked
 
 
     /**
-     * Range primitive operation that advances the range to its next element.
+     * InputRange primitive operation that advances the range to its next element.
      */
     /* @safe */
     void popFront()
     {
         object.via.array.popFront();
     }
+
+
+    /+
+    /**
+     * BidirectionalRange primitive operation that returns the rightmost element.
+     *
+     * Returns:
+     *  the deserialized $(D MPObject).
+     */
+    @property /* @safe */
+    ref MPObject back()
+    {
+        return object.via.array.back();
+    }
+
+
+    /**
+     * BidirectionalRange primitive operation that pops the rightmost element.
+     */
+    /* @safe */
+    void popBack()
+    {
+        object.via.array.popBack();
+    }
+
+
+    /**
+     * RandomAccessRange primitive operation.
+     *
+     * Returns:
+     *  the deserialized $(D MPObject) at $(D_PARAM n) position.
+     */
+    @safe
+    nothrow ref MPObject opIndex(size_t n)
+    {
+        return object.via.array[n];
+    }
+
+
+    /**
+     * Returns a slice of the range.
+     *
+     * Paramas:
+     *  from = the start point of slicing.
+     *  to   = the end point of slicing.
+     *
+     * Returns:
+     *  the slice of MPObjects.
+     */
+    /* @safe */
+    MPObject[] opSlice(size_t from, size_t to)
+    {
+        return object.via.array[from..to];
+    }
+    +/
 
 
     /**
@@ -3064,6 +3132,7 @@ struct Unpacked
 unittest
 {
     static assert(isForwardRange!Unpacked);
+    static assert(hasLength!Unpacked);
 }
 
 
