@@ -2,25 +2,24 @@
 
 /**
  * Stream deserialization usage
- *
- * This example works Windows. In Max OS X, std.concurrency doesn't work.
  */
 
 import std.array;
 import std.concurrency;
+import std.exception;
 import std.stdio;
 
 import std.msgpack;
 
 
-void deserializer(Tid tid)
+void deserializer()
 {
     auto unpacker = unpacker(cast(ubyte[])null);
     bool endLoop;
 
     while (true) {
-        receive((shared ubyte[] data) { unpacker.feed(cast(ubyte[])data); },
-                (bool    end)  { endLoop = end; });
+        receive((immutable(ubyte)[] data) { unpacker.feed(data); },
+                (bool end) { endLoop = end; });
 
         if (endLoop)
             break;
@@ -44,14 +43,15 @@ void main()
         message ~= 'o';
 
     auto packed = pack(message);
-    auto tid    = spawn(&deserializer, thisTid);
+    auto data   = packed.assumeUnique();
+    auto tid    = spawn(&deserializer);
 
-    while (!packed.empty) {
-        auto limit = packed.length >= 10 ? 10 : packed.length;
+    while (!data.empty) {
+        auto limit = data.length >= 10 ? 10 : data.length;
 
-        send(tid, cast(shared ubyte[])packed[0..limit]);
-        packed  = packed[limit..$];
+        tid.send(data[0..limit]);
+        data = data[limit..$];
     }
 
-    send(tid, true);
+    tid.send(true);
 }

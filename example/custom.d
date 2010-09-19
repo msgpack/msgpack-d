@@ -388,7 +388,7 @@ class BTree(Key, Data)
         void _print(ref Node n)
         {
             if (n.type == NodeType.Leaf) {
-                writefln("[%x] Leaf : %d Data : %d", &n, n.key, n.data);
+                writefln("[%x] Leaf : %s Data : %s", &n, n.key, n.data);
             } else {
                 writef("[%x] Childs %d [%x], ", &n, n.childs, &n.child[0]);
 
