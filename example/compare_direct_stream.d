@@ -4,7 +4,7 @@
  * Compares direct conversion with stream.
  */
 
-import std.date;
+import std.datetime;
 import std.stdio;
 import std.typecons;
 
@@ -48,8 +48,8 @@ void main()
     }
 
     auto times = benchmark!(s1, d1, s2, d2)(1000);
-    writeln("Stream(Tuple):", times[0]);
-    writeln("Direct(Tuple):", times[1]);
-    writeln("Stream(Array):", times[2]);
-    writeln("Direct(Array):", times[3]);
+    writeln("Stream(Tuple):", times[0].msecs);
+    writeln("Direct(Tuple):", times[1].msecs);
+    writeln("Stream(Array):", times[2].msecs);
+    writeln("Direct(Array):", times[3].msecs);
 }

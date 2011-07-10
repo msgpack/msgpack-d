@@ -41,6 +41,7 @@ import std.exception;
 import std.range;
 import std.stdio;
 import std.traits;
+import std.typecons;
 import std.typetuple;
 
 // for VRefBuffer
@@ -218,7 +219,7 @@ struct VRefBuffer
      * Params:
      *  value = the contents to write.
      */
-    @safe
+    @trusted
     void putCopy(in ubyte[] value)
     {
         /*
@@ -760,12 +761,12 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
     /// ditto
     ref Packer pack(T)(auto ref T object) if (is(Unqual!T == struct))
     {
-        static if (__traits(compiles, { T t; t.toMsgpack(this); })) {
-            object.toMsgpack(this);
-        } else {  // std.typecons.Tuple
+        static if (isTuple!T) {
             beginArray(object.field.length);
             foreach (f; object.field)
                 pack(f);
+        } else {
+            object.toMsgpack(this);
         }
 
         return this;
@@ -2495,7 +2496,7 @@ struct MPObject
 
 
     /// ditto
-    @safe
+    @trusted
     this(bool value, MPType type = MPType.boolean)
     {
         this(type);
@@ -2504,7 +2505,7 @@ struct MPObject
 
 
     /// ditto
-    @safe
+    @trusted
     this(ulong value, MPType type = MPType.unsigned)
     {
         this(type);
@@ -2513,7 +2514,7 @@ struct MPObject
 
 
     /// ditto
-    @safe
+    @trusted
     this(long value, MPType type = MPType.signed)
     {
         this(type);
@@ -2522,7 +2523,7 @@ struct MPObject
 
 
     /// ditto
-    @safe
+    @trusted
     this(real value, MPType type = MPType.floating)
     {
         this(type);
@@ -2531,7 +2532,7 @@ struct MPObject
 
 
     /// ditto
-    @safe
+    @trusted
     this(MPObject[] value, MPType type = MPType.array)
     {
         this(type);
@@ -2540,7 +2541,7 @@ struct MPObject
 
 
     /// ditto
-    @safe
+    @trusted
     this(MPObject[MPObject] value, MPType type = MPType.map)
     {
         this(type);
@@ -2549,7 +2550,7 @@ struct MPObject
 
 
     /// ditto
-    @safe
+    @trusted
     this(ubyte[] value, MPType type = MPType.raw)
     {
         this(type);
@@ -2569,7 +2570,7 @@ struct MPObject
      * NOTE:
      *  Current implementation uses cast.
      */
-    @property @safe
+    @property @trusted
     T as(T)() if (is(T == bool))
     {
         if (type != MPType.boolean)
@@ -2580,7 +2581,7 @@ struct MPObject
 
 
     /// ditto
-    @property @safe
+    @property @trusted
     T as(T)() if (isIntegral!T)
     {
         if (type == MPType.unsigned)
@@ -2596,7 +2597,7 @@ struct MPObject
 
 
     /// ditto
-    @property @safe
+    @property @trusted
     T as(T)() if (isFloatingPoint!T)
     {
         if (type != MPType.floating)
@@ -2607,7 +2608,7 @@ struct MPObject
 
 
     /// ditto
-    @property @safe
+    @property @trusted
     T as(T)() if (is(Unqual!T == enum))
     {
         return cast(T)as!(OriginalType!T);
@@ -2615,7 +2616,7 @@ struct MPObject
 
 
     /// ditto
-    @property @safe
+    @property @trusted
     T as(T)() if (isArray!T)
     {
         alias typeof(T.init[0]) V;
@@ -2680,7 +2681,7 @@ struct MPObject
      * Returns:
      *  converted value.
      */
-    @property /* @safe */
+    @property @trusted
     T as(T, Args...)(Args args) if (is(T == class))
     {
         static if (!__traits(compiles, { T t; t.fromMsgpack(this); }))
@@ -2698,7 +2699,7 @@ struct MPObject
 
 
     /// ditto
-    @property /* @safe */
+    @property @trusted
     T as(T)() if (is(T == struct))
     {
         T obj;
@@ -2767,14 +2768,14 @@ struct MPObject
             return false;
 
         final switch (other.type) {
-        case MPType.nil:              return true;
-        case MPType.boolean:          return opEquals(other.via.boolean);
+        case MPType.nil:      return true;
+        case MPType.boolean:  return opEquals(other.via.boolean);
         case MPType.unsigned: return opEquals(other.via.uinteger);
-        case MPType.signed: return opEquals(other.via.integer);
-        case MPType.floating:            return opEquals(other.via.floating);
-        case MPType.raw:              return opEquals(other.via.raw);
-        case MPType.array:            return opEquals(other.via.array);
-        case MPType.map:              return opEquals(other.via.map);
+        case MPType.signed:   return opEquals(other.via.integer);
+        case MPType.floating: return opEquals(other.via.floating);
+        case MPType.raw:      return opEquals(other.via.raw);
+        case MPType.array:    return opEquals(other.via.array);
+        case MPType.map:      return opEquals(other.via.map);
         }
     }
 
@@ -3017,7 +3018,7 @@ struct Unpacked
      * Returns:
      *  true if there are no more elements to be iterated.
      */
-    @property @safe
+    @property @trusted
     nothrow bool empty() const  // std.array.empty isn't nothrow function
     {
         return (object.type == MPType.array) && !object.via.array.length;
@@ -3030,7 +3031,7 @@ struct Unpacked
      * Returns:
      *  the number of objects.
      */
-    @property
+    @property @trusted
     size_t length()
     {
         return object.via.array.length;
@@ -3043,7 +3044,7 @@ struct Unpacked
      * Returns:
      *  the deserialized $(D MPObject).
      */
-    @property /* @safe */
+    @property @trusted
     ref MPObject front()
     {
         return object.via.array.front;
@@ -3053,36 +3054,11 @@ struct Unpacked
     /**
      * InputRange primitive operation that advances the range to its next element.
      */
-    /* @safe */
+    @trusted
     void popFront()
     {
         object.via.array.popFront();
     }
-
-
-    /+
-    /**
-     * BidirectionalRange primitive operation that returns the rightmost element.
-     *
-     * Returns:
-     *  the deserialized $(D MPObject).
-     */
-    @property /* @safe */
-    ref MPObject back()
-    {
-        return object.via.array.back();
-    }
-
-
-    /**
-     * BidirectionalRange primitive operation that pops the rightmost element.
-     */
-    /* @safe */
-    void popBack()
-    {
-        object.via.array.popBack();
-    }
-
 
     /**
      * RandomAccessRange primitive operation.
@@ -3090,12 +3066,11 @@ struct Unpacked
      * Returns:
      *  the deserialized $(D MPObject) at $(D_PARAM n) position.
      */
-    @safe
+    @trusted
     nothrow ref MPObject opIndex(size_t n)
     {
         return object.via.array[n];
     }
-
 
     /**
      * Returns a slice of the range.
@@ -3107,13 +3082,11 @@ struct Unpacked
      * Returns:
      *  the slice of MPObjects.
      */
-    /* @safe */
+    @trusted
     MPObject[] opSlice(size_t from, size_t to)
     {
         return object.via.array[from..to];
     }
-    +/
-
 
     /**
      * Range primitive operation that returns the snapshot.
@@ -3687,7 +3660,7 @@ private:
  *  object = the object to set
  *  value  = the content to set
  */
-@safe
+@trusted
 void callbackUInt(ref MPObject object, ulong value)
 {
     object.type         = MPType.unsigned;
@@ -3696,7 +3669,7 @@ void callbackUInt(ref MPObject object, ulong value)
 
 
 /// ditto
-@safe
+@trusted
 void callbackInt(ref MPObject object, long value)
 {
     object.type        = MPType.signed;
@@ -3705,7 +3678,7 @@ void callbackInt(ref MPObject object, long value)
 
 
 /// ditto
-@safe
+@trusted
 void callbackFloat(ref MPObject object, real value)
 {
     object.type         = MPType.floating;
@@ -3714,7 +3687,7 @@ void callbackFloat(ref MPObject object, real value)
 
 
 /// ditto
-@safe
+@trusted
 void callbackRaw(ref MPObject object, ubyte[] raw)
 {
     object.type    = MPType.raw;
@@ -3733,7 +3706,7 @@ void callbackArray(ref MPObject object, size_t length)
 
 
 /// ditto
-@safe
+@trusted
 void callbackMap(ref MPObject object, lazy size_t length)
 {
     object.type    = MPType.map;
@@ -3750,7 +3723,7 @@ void callbackNil(ref MPObject object)
 
 
 /// ditto
-@safe
+@trusted
 void callbackBool(ref MPObject object, bool value)
 {
     object.type        = MPType.boolean;

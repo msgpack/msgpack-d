@@ -4,11 +4,11 @@
  * Compares std.json
  */
 
-import std.date;
+import std.datetime;
 import std.json;
 import std.stdio;
 
-import msgpack.msgpack;
+import std.msgpack;
 
 
 void main()
@@ -28,6 +28,6 @@ void main()
     }
 
     auto times = benchmark!(f1, f2)(10000);
-    writeln("JSON:    ", times[0]);
-    writeln("Msgpack: ", times[1]);
+    writeln("JSON:    ", times[0].msecs);
+    writeln("Msgpack: ", times[1].msecs);
 }

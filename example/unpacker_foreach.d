@@ -27,7 +27,7 @@ void main()
                 switch (obj.type) {
                 case MPType.unsigned: writeln(obj.as!(uint)); break;
                 case MPType.floating: writeln(obj.as!(real)); break;
-                defalut:
+                default:
                     throw new Exception("Unknown type");
                 }
             }
