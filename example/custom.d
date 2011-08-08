@@ -6,7 +6,7 @@
 
 import std.stdio, std.math;
 
-import std.msgpack;
+import msgpack;
 
 
 enum Attr : ubyte

@@ -4,14 +4,12 @@
  * DeflateFilter usage
  */
 
-import std.contracts;
+import std.exception;
 import std.file;
 import std.stdio;
 import std.typecons;
 
-import msgpack.buffer;
-import msgpack.packer;
-import msgpack.unpacker;
+import msgpack
 
 
 /**

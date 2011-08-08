@@ -6,7 +6,7 @@
 
 import std.stdio;
 
-import std.msgpack;
+import msgpack;
 
 
 void main()

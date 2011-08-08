@@ -8,7 +8,7 @@ import std.datetime;
 import std.stdio;
 import std.typecons;
 
-import std.msgpack;
+import msgpack;
 
 
 void main()
