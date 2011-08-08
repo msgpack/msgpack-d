@@ -25,11 +25,11 @@
  *  $(LINK2 http://redmine.msgpack.org/projects/msgpack/wiki/FormatDesign, MessagePack Design concept)$(BR)
  *  $(LINK2 http://redmine.msgpack.org/projects/msgpack/wiki/FormatSpec, MessagePack data format)
  *
- * Copyright: Copyright Masahiro Nakagawa 2010.
+ * Copyright: Copyright Masahiro Nakagawa 2010-.
  * License:   <a href="http://www.boost.org/LICENSE_1_0.txt">Boost License 1.0</a>.
  * Authors:   Masahiro Nakagawa
  *
- *          Copyright Masahiro Nakagawa 2010.
+ *          Copyright Masahiro Nakagawa 2010-.
  * Distributed under the Boost Software License, Version 1.0.
  *    (See accompanying file LICENSE_1_0.txt or copy at
  *          http://www.boost.org/LICENSE_1_0.txt)
@@ -44,7 +44,7 @@ import std.traits;
 import std.typecons;
 import std.typetuple;
 
-// for VRefBuffer
+// for RefBuffer
 version(Posix)
 {
     import core.sys.posix.sys.uio : iovec;
@@ -727,15 +727,21 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
     /**
      * Serializes $(D_PARAM object) and writes to stream.
      *
-     * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D toMsgpack) method.
-     * $(D toMsgpack) signature is:
+     * $(D_KEYWORD class) need to implement $(D toMsgpack) method. $(D toMsgpack) signature is:
      * -----
      * void toMsgpack(Packer)(ref Packer packer) const
      * -----
-     * Assumes $(D std.typecons.Tuple) if $(D_KEYWORD struct) doens't implement $(D toMsgpack).
-     * $(D std.typecons.Tuple) is serialized to Array type.
+     * Assumes $(D std.typecons.Tuple) or simple struct if $(D_KEYWORD struct) doesn't implement $(D toMsgpack).
+     * $(D std.typecons.Tuple) or simple struct is serialized to Array type.
      * -----
      * packer.pack(tuple(true, 1, "Hi!"))  // -> '[true, 1, "Hi!"]', not 'ture, 1, "Hi!"'
+     *
+     * struct Foo
+     * {
+     *     int num    = 10;
+     *     string msg = "D!";
+     * }
+     * packer.pack(Foo());  // -> '[10, "D!"]'
      * -----
      *
      * Params:
@@ -761,12 +767,16 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
     /// ditto
     ref Packer pack(T)(auto ref T object) if (is(Unqual!T == struct))
     {
-        static if (isTuple!T) {
+        static if (__traits(compiles, { T t; t.toMsgpack(this); })) {
+            object.toMsgpack(this);
+        } else static if (isTuple!T) {
             beginArray(object.field.length);
             foreach (f; object.field)
                 pack(f);
-        } else {
-            object.toMsgpack(this);
+        } else {  // simple struct
+            beginArray(object.tupleof.length);
+            foreach (f; object.tupleof)
+                pack(f);
         }
 
         return this;
@@ -1179,8 +1189,24 @@ unittest
             assert(memcmp(&buffer.data[2], &test.num, ushort.sizeof) == 0);
         }
     }
-}
+    { // simple struct
+        {
+            static struct Simple
+            {
+                uint num = uint.max;   
+            }
 
+            mixin DefinePacker; Simple test;
+
+            packer.pack(test);
+
+            assert(buffer.data[0] == (Format.ARRAY | 1));
+            assert(buffer.data[1] ==  Format.UINT32);
+            assert(memcmp(&buffer.data[2], &test.num, uint.sizeof) == 0);
+        }
+    }
+}
+import std.stdio;
 
 // deserializing routines
 
@@ -1885,13 +1911,12 @@ struct Unpacker(UnpackerType Type : UnpackerType.direct)
     /**
      * Deserializes $(D_PARAM T) object and assigns to $(D_PARAM object).
      *
-     * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D fromMsgpack) method.
-     * $(D fromMsgpack) signature is:
+     * $(D_KEYWORD class) need to implement $(D fromMsgpack) method. $(D fromMsgpack) signature is:
      * -----
      * void fromMsgpack(ref Unpacker unpacker)
      * -----
-     * Assumes $(D std.typecons.Tuple) if $(D_KEYWORD struct) doens't implement $(D fromMsgpack).
-     * Checks length if $(D_PARAM T) is a $(D std.typecons.Tuple).
+     * Assumes $(D std.typecons.Tuple) or simple struct if $(D_KEYWORD struct) doesn't implement $(D fromMsgpack).
+     * Checks length if $(D_PARAM T) is a $(D std.typecons.Tuple) or simple struct.
      *
      * Params:
      *  object = the reference of object to assign.
@@ -1901,29 +1926,21 @@ struct Unpacker(UnpackerType Type : UnpackerType.direct)
      * Returns:
      *  self, i.e. for method chaining.
      */
-    template unpack(T, Args...) if (is(Unqual!T == class))
-    {
-        ref Unpacker unpack(ref T object, auto ref Args args)
-        {
-            static if (!__traits(compiles, { T t; t.fromMsgpack(this); }))
-                static assert(false, T.stringof ~ " is not a MessagePackable object");
-
-            if (checkNil())
-                return unpackNil(object);
-
-            if (object is null)
-                object = new T(args);
-
-            object.fromMsgpack(this);
-
-            return this;
-        }
-    }
-    /*
-     * @@@BUG@@@ http://d.puremagic.com/issues/show_bug.cgi?id=2460
     ref Unpacker unpack(T, Args...)(ref T object, auto ref Args args) if (is(Unqual!T == class))
-    { // do stuff }
-    */
+    {
+        static if (!__traits(compiles, { T t; t.fromMsgpack(this); }))
+            static assert(false, T.stringof ~ " is not a MessagePackable object");
+
+        if (checkNil())
+            return unpackNil(object);
+
+        if (object is null)
+            object = new T(args);
+
+        object.fromMsgpack(this);
+
+        return this;
+    }
 
 
     /// ditto
@@ -1936,11 +1953,19 @@ struct Unpacker(UnpackerType Type : UnpackerType.direct)
             if (length == 0)
                 return this;
 
-            if (length != T.Types.length)
-                rollback(calculateSize(length));
+            static if (isTuple!T) {
+                if (length != T.Types.length)
+                    rollback(calculateSize(length));
 
-            foreach (i, Type; T.Types)
-                unpack(object.field[i]);
+                foreach (i, Type; T.Types)
+                    unpack(object.field[i]);
+            } else {  // simple struct
+                if (length != object.tupleof.length)
+                    rollback(calculateSize(length));
+
+                foreach (i, member; object.tupleof)
+                    unpack(object.tupleof[i]);
+            }
         }
 
         return this;
@@ -2382,6 +2407,23 @@ unittest
             assert(test.num == result.num + 1);
         }
     }
+    { // simple struct
+        {
+            static struct Simple
+            {
+                uint num;
+            }
+
+            mixin DefinePacker; Simple result, test = Simple(uint.max);
+
+            packer.pack(test);
+
+            auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+            unpacker.unpack(result);
+
+            assert(test.num == result.num);
+        }
+    }
     { // variadic
         mixin DefinePacker;
 
@@ -2668,12 +2710,11 @@ struct MPObject
     /**
      * Converts to $(D_PARAM T) type.
      *
-     * $(D_KEYWORD struct) and $(D_KEYWORD class) need to implement $(D fromMsgpack) method.
-     * $(D fromMsgpack) signature is:
+     * $(D_KEYWORD class) need to implement $(D fromMsgpack) method. $(D fromMsgpack) signature is:
      * -----
      * void fromMsgpack(MPObject object)
      * -----
-     * Assumes $(D std.typecons.Tuple) if $(D_KEYWORD struct) doens't implement $(D fromMsgpack).
+     * Assumes $(D std.typecons.Tuple) or simple struct if $(D_KEYWORD struct) doesn't implement $(D fromMsgpack).
      *
      * Params:
      *  args = arguments to class constructor(class only).
@@ -2707,8 +2748,13 @@ struct MPObject
         static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
             obj.fromMsgpack(this);
         } else {
-            foreach (i, Type; T.Types)
-                obj.field[i] = via.array[i].as!(Type);
+            static if (isTuple!T) {
+                foreach (i, Type; T.Types)
+                    obj.field[i] = via.array[i].as!(Type);
+            } else {  // simple struct
+                foreach (i, member; obj.tupleof)
+                    obj.tupleof[i] = via.array[i].as!(typeof(member));
+            }
         }
 
         return obj;
@@ -2961,6 +3007,21 @@ unittest
 
     S s = object.as!(S);
     assert(s.num == 10);
+
+    object = MPObject([MPObject(0.5f), MPObject(cast(ubyte[])[72, 105, 33])]);
+
+    // struct
+    static struct Simple
+    {
+        double num;
+        string msg;
+    }
+
+    Simple simple = object.as!(Simple);
+    assert(simple.num == 0.5f);
+    assert(simple.msg == "Hi!");
+
+    object = MPObject(10UL);
 
     // class
     static class C
