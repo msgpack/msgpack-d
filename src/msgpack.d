@@ -752,13 +752,26 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
      */
     ref Packer pack(T)(in T object) if (is(Unqual!T == class))
     {
-        static if (!__traits(compiles, { T t; t.toMsgpack(this); }))
-            static assert(false, T.stringof ~ " is not a MessagePackable object");
-
         if (object is null)
             return packNil();
 
-        object.toMsgpack(this);
+        static if (__traits(compiles, { T t; t.toMsgpack(this); })) {
+            object.toMsgpack(this);
+        } else {
+            // TODO: Add object serialization handler
+            if (T.classinfo !is object.classinfo) {
+                throw new Exception("Can't pack derived class through reference to base class.");
+            }
+
+            alias SerializingClasses!(T) Classes;
+
+            beginArray(SerializingMemberNembers!(Classes));
+            foreach (Class; Classes) {
+                Class obj = cast(Class)object;
+                foreach (f ; obj.tupleof)
+                    pack(f);
+            }
+        }
 
         return this;
     }
@@ -1189,11 +1202,11 @@ unittest
             assert(memcmp(&buffer.data[2], &test.num, ushort.sizeof) == 0);
         }
     }
-    { // simple struct
+    { // simple struct and class
         {
             static struct Simple
             {
-                uint num = uint.max;   
+                uint num = uint.max;
             }
 
             mixin DefinePacker; Simple test;
@@ -1203,6 +1216,41 @@ unittest
             assert(buffer.data[0] == (Format.ARRAY | 1));
             assert(buffer.data[1] ==  Format.UINT32);
             assert(memcmp(&buffer.data[2], &test.num, uint.sizeof) == 0);
+        }
+
+        static class SimpleA
+        {
+            bool flag = true;
+        }
+
+        static class SimpleB : SimpleA
+        {
+            ubyte type = 100;
+        }
+
+        static class SimpleC : SimpleB
+        {
+            uint num = uint.max;
+        }
+
+        {  // from derived class
+            mixin DefinePacker; SimpleC test = new SimpleC();
+
+            packer.pack(test);
+
+            assert(buffer.data[0] == (Format.ARRAY | 3));
+            assert(buffer.data[1] ==  Format.TRUE);
+            assert(buffer.data[2] ==  100);
+            assert(buffer.data[3] ==  Format.UINT32);
+            assert(memcmp(&buffer.data[4], &test.num, uint.sizeof) == 0);
+        }
+        {  // from base class
+            mixin DefinePacker; SimpleB test = new SimpleC();
+
+            try {
+                packer.pack(test);
+                assert(false);
+            } catch (Exception e) { }
         }
     }
 }
@@ -1928,16 +1976,35 @@ struct Unpacker(UnpackerType Type : UnpackerType.direct)
      */
     ref Unpacker unpack(T, Args...)(ref T object, auto ref Args args) if (is(Unqual!T == class))
     {
-        static if (!__traits(compiles, { T t; t.fromMsgpack(this); }))
-            static assert(false, T.stringof ~ " is not a MessagePackable object");
-
         if (checkNil())
             return unpackNil(object);
 
         if (object is null)
             object = new T(args);
 
-        object.fromMsgpack(this);
+        static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
+            object.fromMsgpack(this);
+        } else {
+            // TODO: Add object deserialization handler
+            if (T.classinfo !is object.classinfo) {
+                throw new Exception("Can't unpack derived class through reference to base class.");
+            }
+
+            auto length = beginArray();
+            if (length == 0)
+                return this;
+
+            alias SerializingClasses!(T) Classes;
+
+            if (length != SerializingMemberNembers!(Classes))
+                rollback(calculateSize(length));
+
+            foreach (Class; Classes) {
+                Class obj = cast(Class)object;
+                foreach (i, member; obj.tupleof)
+                    unpack(obj.tupleof[i]);
+            }
+        }
 
         return this;
     }
@@ -2407,7 +2474,7 @@ unittest
             assert(test.num == result.num + 1);
         }
     }
-    { // simple struct
+    { // simple struct and class
         {
             static struct Simple
             {
@@ -2422,6 +2489,51 @@ unittest
             unpacker.unpack(result);
 
             assert(test.num == result.num);
+        }
+
+        static class SimpleA
+        {
+            bool flag = true;
+        }
+
+        static class SimpleB : SimpleA
+        {
+            ubyte type = 100;
+        }
+
+        static class SimpleC : SimpleB
+        {
+            uint num = uint.max;
+        }
+
+        { // from derived class
+            mixin DefinePacker; SimpleC result, test = new SimpleC();
+
+            test.flag = false;
+            test.type = 99;
+            test.num  = uint.max / 2;
+
+            packer.pack(test);
+
+            auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+            unpacker.unpack(result);
+
+            assert(test.flag == result.flag);
+            assert(test.type == result.type);
+            assert(test.num  == result.num);
+        }
+        { // from base class
+            mixin DefinePacker; SimpleC test = new SimpleC();
+
+            packer.pack(test);
+
+            SimpleB result = new SimpleC();
+            auto unpacker  = unpacker!(UnpackerType.direct)(packer.stream.data);
+
+            try {
+                unpacker.unpack(result);
+                assert(false);
+            } catch (Exception e) { }
         }
     }
     { // variadic
@@ -2725,15 +2837,23 @@ struct MPObject
     @property @trusted
     T as(T, Args...)(Args args) if (is(T == class))
     {
-        static if (!__traits(compiles, { T t; t.fromMsgpack(this); }))
-            static assert(false, T.stringof ~ " is not a MessagePackable object");
-
         if (type == MPType.nil)
             return null;
 
         T object = new T(args);
 
-        object.fromMsgpack(this);
+        static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
+            object.fromMsgpack(this);
+        } else {
+            alias SerializingClasses!(T) Classes;
+
+            size_t offset;
+            foreach (Class; Classes) {
+                Class obj = cast(Class)object;
+                foreach (i, member; obj.tupleof)
+                    obj.tupleof[i] = via.array[offset++].as!(typeof(member));
+            }
+        }
 
         return object;
     }
@@ -3033,6 +3153,28 @@ unittest
 
     C c = object.as!(C);
     assert(c.num == 10);
+
+    static class SimpleA
+    {
+        bool flag = true;
+    }
+
+    static class SimpleB : SimpleA
+    {
+        ubyte type = 100;
+    }
+
+    static class SimpleC : SimpleB
+    {
+        uint num = uint.max;
+    }
+
+    object = MPObject([MPObject(false), MPObject(99UL), MPObject(cast(ulong)(uint.max / 2u))]);
+
+    SimpleC sc = object.as!(SimpleC);
+    assert(sc.flag == false);
+    assert(sc.type == 99);
+    assert(sc.num  == uint.max / 2);
 
     // std.typecons.Tuple
     object = MPObject([MPObject(true), MPObject(1UL), MPObject(cast(ubyte[])"Hi!")]);
@@ -4294,6 +4436,27 @@ template AsteriskOf(T)
         enum AsteriskOf = "*" ~ AsteriskOf!U;
     else
         enum AsteriskOf = "";
+}
+
+
+/**
+ * Get the number of member to serialize.
+ */
+template SerializingMemberNembers(Classes...)
+{
+    static if (Classes.length == 0)
+        enum SerializingMemberNembers = 0;
+    else
+        enum SerializingMemberNembers = Classes[0].tupleof.length + SerializingMemberNembers!(Classes[1..$]);
+}
+
+
+/**
+ * Get derived classes with serialization-order
+ */
+template SerializingClasses(T)
+{
+    alias TypeTuple!(Reverse!(Erase!(Object, BaseClassesTuple!(T))), T) SerializingClasses;
 }
 
 
