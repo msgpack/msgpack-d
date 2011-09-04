@@ -727,12 +727,13 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
     /**
      * Serializes $(D_PARAM object) and writes to stream.
      *
-     * $(D_KEYWORD class) need to implement $(D toMsgpack) method. $(D toMsgpack) signature is:
+     * Calling $(D toMsgpack) if $(D_KEYWORD class) and $(D_KEYWORD struct) implement $(D toMsgpack) method. $(D toMsgpack) signature is:
      * -----
      * void toMsgpack(Packer)(ref Packer packer) const
      * -----
-     * Assumes $(D std.typecons.Tuple) or simple struct if $(D_KEYWORD struct) doesn't implement $(D toMsgpack).
-     * $(D std.typecons.Tuple) or simple struct is serialized to Array type.
+     * This method serializes all members of T object if $(D_KEYWORD class) and $(D_KEYWORD struct) don't implement $(D toMsgpack).
+     *
+     * An object that doesn't implement $(D toMsgpack) is serialized to Array type.
      * -----
      * packer.pack(tuple(true, 1, "Hi!"))  // -> '[true, 1, "Hi!"]', not 'ture, 1, "Hi!"'
      *
@@ -742,6 +743,16 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
      *     string msg = "D!";
      * }
      * packer.pack(Foo());  // -> '[10, "D!"]'
+     *
+     * class Base
+     * {
+     *     bool flag = true;
+     * }
+     * class Derived : Base
+     * {
+     *     double = 0.5f;
+     * }
+     * packer.pack(new Derived());  // -> '[true, 0.5f]'
      * -----
      *
      * Params:
@@ -760,7 +771,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
         } else {
             // TODO: Add object serialization handler
             if (T.classinfo !is object.classinfo) {
-                throw new Exception("Can't pack derived class through reference to base class.");
+                throw new InvalidTypeException("Can't pack derived class through reference to base class.");
             }
 
             alias SerializingClasses!(T) Classes;
@@ -1959,7 +1970,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.direct)
     /**
      * Deserializes $(D_PARAM T) object and assigns to $(D_PARAM object).
      *
-     * $(D_KEYWORD class) need to implement $(D fromMsgpack) method. $(D fromMsgpack) signature is:
+     * Calling $(D fromMsgpack) if $(D_KEYWORD class) and $(D_KEYWORD struct) implement $(D fromMsgpack) method. $(D fromMsgpack) signature is:
      * -----
      * void fromMsgpack(ref Unpacker unpacker)
      * -----
@@ -1987,14 +1998,14 @@ struct Unpacker(UnpackerType Type : UnpackerType.direct)
         } else {
             // TODO: Add object deserialization handler
             if (T.classinfo !is object.classinfo) {
-                throw new Exception("Can't unpack derived class through reference to base class.");
+                throw new InvalidTypeException("Can't unpack derived class through reference to base class.");
             }
+
+            alias SerializingClasses!(T) Classes;
 
             auto length = beginArray();
             if (length == 0)
                 return this;
-
-            alias SerializingClasses!(T) Classes;
 
             if (length != SerializingMemberNembers!(Classes))
                 rollback(calculateSize(length));
@@ -2822,11 +2833,11 @@ struct MPObject
     /**
      * Converts to $(D_PARAM T) type.
      *
-     * $(D_KEYWORD class) need to implement $(D fromMsgpack) method. $(D fromMsgpack) signature is:
+     * Calling $(D fromMsgpack) if $(D_KEYWORD class) and $(D_KEYWORD struct) implement $(D fromMsgpack) method. $(D fromMsgpack) signature is:
      * -----
      * void fromMsgpack(MPObject object)
      * -----
-     * Assumes $(D std.typecons.Tuple) or simple struct if $(D_KEYWORD struct) doesn't implement $(D fromMsgpack).
+     * This method assigns converted values to all members of T object if $(D_KEYWORD class) and $(D_KEYWORD struct) don't implement $(D fromMsgpack).
      *
      * Params:
      *  args = arguments to class constructor(class only).
@@ -2846,6 +2857,9 @@ struct MPObject
             object.fromMsgpack(this);
         } else {
             alias SerializingClasses!(T) Classes;
+
+            if (via.array.length != SerializingMemberNembers!(Classes))
+                throw new InvalidTypeException("The number of deserialized object member is mismatched");
 
             size_t offset;
             foreach (Class; Classes) {
@@ -2869,9 +2883,15 @@ struct MPObject
             obj.fromMsgpack(this);
         } else {
             static if (isTuple!T) {
+                if (via.array.length != T.Types.length)
+                    throw new InvalidTypeException("The number of deserialized Tuple element is mismatched");
+
                 foreach (i, Type; T.Types)
                     obj.field[i] = via.array[i].as!(Type);
             } else {  // simple struct
+                if (via.array.length != obj.tupleof.length)
+                    throw new InvalidTypeException("The number of deserialized struct member is mismatched");
+
                 foreach (i, member; obj.tupleof)
                     obj.tupleof[i] = via.array[i].as!(typeof(member));
             }
