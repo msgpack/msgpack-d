@@ -22,8 +22,8 @@
  *
  * See_Also:
  *  $(LINK2 http://msgpack.org/, The MessagePack Project)$(BR)
- *  $(LINK2 http://redmine.msgpack.org/projects/msgpack/wiki/FormatDesign, MessagePack Design concept)$(BR)
- *  $(LINK2 http://redmine.msgpack.org/projects/msgpack/wiki/FormatSpec, MessagePack data format)
+ *  $(LINK2 http://wiki.msgpack.org/display/MSGPACK/Design+of+Serialization, MessagePack Design concept)$(BR)
+ *  $(LINK2 http://wiki.msgpack.org/display/MSGPACK/Format+specification, MessagePack data format)
  *
  * Copyright: Copyright Masahiro Nakagawa 2010-.
  * License:   <a href="http://www.boost.org/LICENSE_1_0.txt">Boost License 1.0</a>.
@@ -78,7 +78,7 @@ static if (real.sizeof == double.sizeof) {
     import std.numeric;
 }
 
-version(unittest) import std.file, std.typecons, std.c.string;
+version(unittest) import std.file, std.c.string;
 
 
 @trusted:
@@ -88,19 +88,16 @@ version(unittest) import std.file, std.typecons, std.c.string;
 
 
 /**
- * $(D RefBuffer) is a zero copy buffer for more efficient serialization
+ * $(D RefBuffer) is a reference stored buffer for more efficient serialization
  *
  * Example:
  * -----
- * auto packer = packer(vrefBuffer(16));  // threshold is 16
+ * auto packer = packer(RefBuffer(16));  // threshold is 16
  *
  * // packs data
  *
  * writev(fd, cast(void*)packer.buffer.vector.ptr, packer.buffer.vector.length);
  * -----
- *
- * See_Also:
- *  $(LINK http://redmine.msgpack.org/projects/msgpack/wiki/Introduction)
  */
 struct RefBuffer
 {
@@ -118,7 +115,7 @@ struct RefBuffer
     size_t  index_;   // index for cunrrent chunk
 
     // for putRef
-    iovec[] vecList_;  // referece to large data or copied data.
+    iovec[] vecList_;  // reference to large data or copied data.
 
 
   public:
@@ -256,29 +253,12 @@ struct RefBuffer
 }
 
 
-/**
- * Helper for $(D RefBuffer) construction.
- *
- * Params:
- *  threshold = the threshold of writing value or stores reference.
- *  chunkSize = the default size of chunk for allocation.
- *
- * Returns:
- *  a $(D RefBuffer) object instantiated and initialized according to the arguments.
- */
-@safe
-RefBuffer refBuffer(in size_t threshold = 32, in size_t chunkSize = 8192)
-{
-    return typeof(return)(threshold, chunkSize);
-}
-
-
 unittest
 {
     static assert(isOutputRange!(RefBuffer, ubyte) &&
                   isOutputRange!(RefBuffer, ubyte[]));
 
-    auto buffer = refBuffer(2, 4);
+    auto buffer = RefBuffer(2, 4);
 
     ubyte[] tests = [1, 2];
     foreach (v; tests)
@@ -1540,6 +1520,9 @@ else
  * Tuple!(uint, double, bool) record;
  * unpacker.unpack(record);  // record is [10, 0.1, false]
  * -----
+ *
+ * NOTE:
+ *  Unpacker becomes template struct if Phobos supports truly IO module.
  */
 struct Unpacker
 {
