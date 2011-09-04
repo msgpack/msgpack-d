@@ -776,7 +776,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
             alias SerializingClasses!(T) Classes;
 
-            beginArray(SerializingMemberNembers!(Classes));
+            beginArray(SerializingMemberNumbers!(Classes));
             foreach (Class; Classes) {
                 Class obj = cast(Class)object;
                 foreach (f ; obj.tupleof)
@@ -2007,7 +2007,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.direct)
             if (length == 0)
                 return this;
 
-            if (length != SerializingMemberNembers!(Classes))
+            if (length != SerializingMemberNumbers!(Classes))
                 rollback(calculateSize(length));
 
             foreach (Class; Classes) {
@@ -2858,7 +2858,7 @@ struct MPObject
         } else {
             alias SerializingClasses!(T) Classes;
 
-            if (via.array.length != SerializingMemberNembers!(Classes))
+            if (via.array.length != SerializingMemberNumbers!(Classes))
                 throw new InvalidTypeException("The number of deserialized object member is mismatched");
 
             size_t offset;
@@ -4462,12 +4462,12 @@ template AsteriskOf(T)
 /**
  * Get the number of member to serialize.
  */
-template SerializingMemberNembers(Classes...)
+template SerializingMemberNumbers(Classes...)
 {
     static if (Classes.length == 0)
-        enum SerializingMemberNembers = 0;
+        enum SerializingMemberNumbers = 0;
     else
-        enum SerializingMemberNembers = Classes[0].tupleof.length + SerializingMemberNembers!(Classes[1..$]);
+        enum SerializingMemberNumbers = Classes[0].tupleof.length + SerializingMemberNumbers!(Classes[1..$]);
 }
 
 
