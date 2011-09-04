@@ -14,7 +14,7 @@ import msgpack;
 
 void deserializer()
 {
-    auto unpacker = unpacker(cast(ubyte[])null);
+    auto unpacker = StreamingUnpacker(cast(ubyte[])null);
     bool endLoop;
 
     while (true) {

@@ -1316,6 +1316,15 @@ version (D_Ddoc)
      */
     mixin template InternalBuffer()
     {
+      private:
+        ubyte[] buffer_;  // internal buffer
+        size_t  used_;    // index that buffer cosumed
+        size_t  offset_;  // index that buffer parsed
+        size_t  parsed_;  // total size of parsed message
+        bool    hasRaw_;  // indicates whether Raw object has been deserialized
+
+
+      public:
         /**
          * Forwards to internal buffer.
          *
@@ -1375,6 +1384,11 @@ version (D_Ddoc)
          */
         @property @safe
         nothrow size_t unparsedSize() const;
+
+
+    private:
+        @safe
+        void initializeBuffer(in ubyte[] target, in size_t bufferSize = 8192);
     }
 }
 else
@@ -1507,16 +1521,6 @@ else
 
 
 /**
- * Implementation types for template specialization
- */
-enum UnpackerType
-{
-    direct,  /// Direct-conversion deserializer
-    stream   /// Stream deserializer
-}
-
-
-/**
  * This $(D Unpacker) is a $(D MessagePack) direct-conversion deserializer
  *
  * This implementation is suitable for fixed data.
@@ -1524,7 +1528,7 @@ enum UnpackerType
  * Example:
  * -----
  * // serializedData is [10, 0.1, false]
- * auto unpacker = unpacker!(UnpackerType.direct)(serializedData);
+ * auto unpacker = Unpacker(serializedData);
  *
  * uint   n;
  * double d;
@@ -1537,7 +1541,7 @@ enum UnpackerType
  * unpacker.unpack(record);  // record is [10, 0.1, false]
  * -----
  */
-struct Unpacker(UnpackerType Type : UnpackerType.direct)
+struct Unpacker
 {
   private:
     enum Offset = 1;
@@ -2182,7 +2186,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.direct)
      * Example:
      * -----
      * // serialized data is "[1, 2][3, 4][5, 6][...".
-     * auto unpacker = unpacker!(UnpackerType.direct)(serializedData);
+     * auto unpacker = Unpacker(serializedData);
      * foreach (n, d; &unpacker.scan!(int, int))  // == "foreach (int n, int d; unpacker)"
      *     writeln(n, d); // 1st loop "1, 2", 2nd loop "3, 4"...
      * -----
@@ -2339,7 +2343,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+        auto unpacker = Unpacker(packer.stream.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -2353,7 +2357,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+        auto unpacker = Unpacker(packer.stream.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -2367,7 +2371,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+        auto unpacker = Unpacker(packer.stream.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -2384,7 +2388,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+        auto unpacker = Unpacker(packer.stream.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -2399,7 +2403,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+        auto unpacker = Unpacker(packer.stream.data);
         unpacker.unpack(result);
 
         foreach (i, v; test.field)
@@ -2417,7 +2421,7 @@ unittest
 
         packer.pack(D, e);
 
-        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+        auto unpacker = Unpacker(packer.stream.data);
         unpacker.unpack(resultF, resultE);
 
         assert(f == resultF);
@@ -2432,7 +2436,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+        auto unpacker = Unpacker(packer.stream.data);
         unpacker.unpack(result);
 
         assert(test == result);
@@ -2444,7 +2448,7 @@ unittest
                 uint num;
 
                 void toMsgpack(P)(ref P p) const { p.packArray(num); }
-                void fromMsgpack(ref Unpacker!(UnpackerType.direct) u)
+                void fromMsgpack(ref Unpacker u)
                 { 
                     assert(u.beginArray() == 1);
                     u.unpack(num);
@@ -2455,7 +2459,7 @@ unittest
 
             packer.pack(test);
 
-            auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+            auto unpacker = Unpacker(packer.stream.data);
             unpacker.unpack(result);
 
             assert(test.num == result.num);
@@ -2468,7 +2472,7 @@ unittest
                 this(uint n) { num = n; }
 
                 void toMsgpack(P)(ref P p) const { p.packArray(num - 1); }
-                void fromMsgpack(ref Unpacker!(UnpackerType.direct) u)
+                void fromMsgpack(ref Unpacker u)
                 {
                     assert(u.beginArray() == 1);
                     u.unpack(num);
@@ -2479,7 +2483,7 @@ unittest
 
             packer.pack(test);
 
-            auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+            auto unpacker = Unpacker(packer.stream.data);
             unpacker.unpack(result, ushort.max);
 
             assert(test.num == result.num + 1);
@@ -2496,7 +2500,7 @@ unittest
 
             packer.pack(test);
 
-            auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+            auto unpacker = Unpacker(packer.stream.data);
             unpacker.unpack(result);
 
             assert(test.num == result.num);
@@ -2526,7 +2530,7 @@ unittest
 
             packer.pack(test);
 
-            auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+            auto unpacker = Unpacker(packer.stream.data);
             unpacker.unpack(result);
 
             assert(test.flag == result.flag);
@@ -2539,7 +2543,7 @@ unittest
             packer.pack(test);
 
             SimpleB result = new SimpleC();
-            auto unpacker  = unpacker!(UnpackerType.direct)(packer.stream.data);
+            auto unpacker  = Unpacker(packer.stream.data);
 
             try {
                 unpacker.unpack(result);
@@ -2554,7 +2558,7 @@ unittest
 
         packer.pack(test);
 
-        auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+        auto unpacker = Unpacker(packer.stream.data);
 
         uint u; long l; double d;
 
@@ -2571,7 +2575,7 @@ unittest
             data ~= packer.stream.data;
         }
 
-        foreach (n, d, s; &unpacker!(UnpackerType.direct)(data).scan!(int, double, string)) {
+        foreach (n, d, s; &Unpacker(data).scan!(int, double, string)) {
             assert(n == 1);
             assert(d == 0.5);
             assert(s == "Hi!");
@@ -2604,7 +2608,7 @@ enum MPType
  *
  * Example:
  * -----
- * auto unpacker = unpacker(pack(1, 0.1L) ~ pack(true) ~ pack("foobarbaz"));
+ * auto unpacker = StreamingUnpacker(pack(1, 0.1L) ~ pack(true) ~ pack("foobarbaz"));
  *
  * foreach (unpacked; unpacker) {
  *     if (unpacked.type == MPType.array) {
@@ -3333,14 +3337,14 @@ unittest
 
 
 /**
- * This $(D Unpacker) is a $(D MessagePack) stream deserializer
+ * This $(D StreamingUnpacker) is a $(D MessagePack) streaming deserializer
  *
  * This implementation enables you to load multiple objects from a stream(like network).
  *
  * Example:
  * -----
  * ...
- * auto unpacker = unpacker(serializedData);
+ * auto unpacker = StreamingUnpacker(serializedData);
  * ...
  *
  * // appends new data to buffer if pre execute() call didn't finish deserialization.
@@ -3356,7 +3360,7 @@ unittest
  *     throw new Exception("Message is too large");
  * -----
  */
-struct Unpacker(UnpackerType Type : UnpackerType.stream)
+struct StreamingUnpacker
 {
   private:
     /*
@@ -3429,7 +3433,7 @@ struct Unpacker(UnpackerType Type : UnpackerType.stream)
 
   public:
     /**
-     * Constructs a $(D Unpacker).
+     * Constructs a $(D StreamingUnpacker).
      *
      * Params:
      *  target     = byte buffer to deserialize
@@ -3822,23 +3826,6 @@ struct Unpacker(UnpackerType Type : UnpackerType.stream)
 }
 
 
-/**
- * Helper for $(D Unpacker) construction.
- *
- * Params:
- *  target     = byte buffer to deserialize.
- *  bufferSize = size limit of buffer size.
- *
- * Returns:
- *  a $(D Unpacker) object instantiated and initialized according to the arguments.
- */
-@safe
-Unpacker!(Type) unpacker(UnpackerType Type = UnpackerType.stream)(in ubyte[] target, in size_t bufferSize = 8192)
-{
-    return typeof(return)(target, bufferSize);
-}
-
-
 unittest
 {
     // serialize
@@ -3847,7 +3834,7 @@ unittest
     packer.packArray(null, true, 1, -2, "Hi!", [1], [1:1], double.max);
 
     // deserialize
-    auto unpacker = unpacker(packer.stream.data); unpacker.execute();
+    auto unpacker = StreamingUnpacker(packer.stream.data); unpacker.execute();
     auto unpacked = unpacker.purge();
 
     // Range test
@@ -4086,7 +4073,7 @@ unittest
  */
 Unpacked unpack(Tdummy = void)(in ubyte[] buffer)
 {
-    auto unpacker = unpacker(buffer);
+    auto unpacker = StreamingUnpacker(buffer);
 
     if (!unpacker.execute())
         throw new UnpackException("Deserialization failure");
@@ -4096,7 +4083,7 @@ Unpacked unpack(Tdummy = void)(in ubyte[] buffer)
 
 
 /**
- * Deserializes $(D_PARAM buffer) using direct conversion deserializer.
+ * Deserializes $(D_PARAM buffer) using direct-conversion deserializer.
  *
  * Assumes single object if the length of $(D_PARAM args) == 1,
  * otherwise array object.
@@ -4107,7 +4094,7 @@ Unpacked unpack(Tdummy = void)(in ubyte[] buffer)
  */
 void unpack(Args...)(in ubyte[] buffer, ref Args args)
 {
-    auto unpacker = unpacker!(UnpackerType.direct)(buffer);
+    auto unpacker = Unpacker(buffer);
 
     static if (Args.length == 1)
         unpacker.unpack(args[0]);
@@ -4212,7 +4199,7 @@ mixin template MessagePackable(Members...)
          * Throws:
          *  InvalidTypeException if the size of deserialized object is mismatched.
          */
-        void fromMsgpack(ref Unpacker!(UnpackerType.direct) unpacker)
+        void fromMsgpack(ref Unpacker unpacker)
         {
             auto length = unpacker.beginArray();
             if (length != this.tupleof.length)
@@ -4251,7 +4238,7 @@ mixin template MessagePackable(Members...)
         /**
          * Member selecting version of fromMsgpack for direct-converion deserializer.
          */
-        void fromMsgpack(ref Unpacker!(UnpackerType.direct) unpacker)
+        void fromMsgpack(ref Unpacker unpacker)
         {
             auto length = unpacker.beginArray();
             if (length != Members.length)
@@ -4289,7 +4276,7 @@ unittest
             assert(result.str == "Hi!");
         }
         { // direct conversion
-            auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+            auto unpacker = Unpacker(packer.stream.data);
 
             S result; unpacker.unpack(result);
 
@@ -4314,14 +4301,14 @@ unittest
         C orig = new C(10, "Hi!"); orig.toMsgpack(packer);
 
         { // stream
-            auto unpacker = unpacker(packer.stream.data); unpacker.execute();
+            auto unpacker = StreamingUnpacker(packer.stream.data); unpacker.execute();
 
             C result = new C; result.fromMsgpack(unpacker.unpacked);
 
             assert(result.num == 10);
         }
         { // direct conversion
-            auto unpacker = unpacker!(UnpackerType.direct)(packer.stream.data);
+            auto unpacker = Unpacker(packer.stream.data);
 
             C result; unpacker.unpack(result);
 

@@ -20,10 +20,6 @@ struct User
     string name;
     uint   age;
     Attr   attr;
-
-    // mixin point is here.
-    // http://d.puremagic.com/issues/show_bug.cgi?id=1099
-    mixin MessagePackable;
 }
 
 
@@ -31,7 +27,7 @@ void main()
 {
     User user = User("Foo", 20, Attr.B), other;
 
-    other.fromMsgpack(unpack(pack(user)));
+    unpack(pack(user), other);
 
     writeln("name: ", other.name, "(", other.age, ", ", other.attr, ")");
 
@@ -98,7 +94,7 @@ class BTree(Key, Data)
                 packer.packArray(key, data);
         }
 
-        void fromMsgpack(ref Unpacker!(UnpackerType.direct) unpacker)
+        void fromMsgpack(ref Unpacker unpacker)
         {
             if (unpacker.beginArray() == 4) {
                 size_t max;
@@ -414,7 +410,7 @@ class BTree(Key, Data)
         packer.pack(root);
     }
 
-    void fromMsgpack(ref Unpacker!(UnpackerType.direct) unpacker)
+    void fromMsgpack(ref Unpacker unpacker)
     {
         unpacker.unpack(root, MAX_CHILD);
     }

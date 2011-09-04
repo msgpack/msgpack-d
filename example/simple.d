@@ -16,7 +16,7 @@ void main()
 
     packer.packArray(null, true, "Hi!", -1, [1, 2]);
 
-    auto unpacker = unpacker(packer.stream.data);
+    auto unpacker = StreamingUnpacker(packer.stream.data);
 
     if (unpacker.execute()) {
         foreach (obj; unpacker.purge())

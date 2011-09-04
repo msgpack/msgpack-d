@@ -19,7 +19,7 @@ void main()
     test1 ~= test2[0..2];
     test2  = test2[2..$];
 
-    auto unpacker = unpacker(test1);
+    auto unpacker = StreamingUnpacker(test1);
 
     foreach (unpacked; unpacker) {
         if (unpacked.type == MPType.array) {
