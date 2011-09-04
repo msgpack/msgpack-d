@@ -299,6 +299,18 @@ unittest
 }
 
 
+/**
+ * $(D MessagePackException) is a root Exception for MessagePack related operation.
+ */
+class MessagePackException : Exception
+{
+    this(string message)
+    {
+        super(message);
+    }
+}
+
+
 // Serializing routines
 
 
@@ -771,7 +783,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
         } else {
             // TODO: Add object serialization handler
             if (T.classinfo !is object.classinfo) {
-                throw new InvalidTypeException("Can't pack derived class through reference to base class.");
+                throw new MessagePackException("Can't pack derived class through reference to base class.");
             }
 
             alias SerializingClasses!(T) Classes;
@@ -1271,24 +1283,12 @@ unittest
 
 
 /**
- * $(D UnpackException) is thrown on parse error
+ * $(D UnpackException) is thrown on deserialization failure
  */
-class UnpackException : Exception
+class UnpackException : MessagePackException
 {
     this(string message)
     { 
-        super(message);
-    }
-}
-
-
-/**
- * $(D InvalidTypeException) is thrown on type errors
- */
-class InvalidTypeException : Exception
-{
-    this(string message)
-    {
         super(message);
     }
 }
@@ -1596,7 +1596,7 @@ struct Unpacker
      *
      * Throws:
      *  UnpackException when doesn't read from buffer or precision loss occurs and
-     *  InvalidTypeException when $(D_PARAM T) type doesn't match serialized type.
+     *  MessagePackException when $(D_PARAM T) type doesn't match serialized type.
      */
     ref Unpacker unpack(T)(ref T value) if (is(Unqual!T == bool))
     {
@@ -1869,7 +1869,7 @@ struct Unpacker
      *
      * Throws:
      *  UnpackException when doesn't read from buffer or precision loss occurs and
-     *  InvalidTypeException when $(D_PARAM T) type doesn't match serialized type.
+     *  MessagePackException when $(D_PARAM T) type doesn't match serialized type.
      */
     ref Unpacker unpack(T)(ref T array) if (isArray!T)
     {
@@ -2002,7 +2002,7 @@ struct Unpacker
         } else {
             // TODO: Add object deserialization handler
             if (T.classinfo !is object.classinfo) {
-                throw new InvalidTypeException("Can't unpack derived class through reference to base class.");
+                throw new MessagePackException("Can't unpack derived class through reference to base class.");
             }
 
             alias SerializingClasses!(T) Classes;
@@ -2232,7 +2232,7 @@ struct Unpacker
      *
      * Throws:
      *  UnpackException when doesn't read from buffer or precision loss occurs and
-     *  InvalidTypeException when $(D_PARAM T) type doesn't match serialized type.
+     *  MessagePackException when $(D_PARAM T) type doesn't match serialized type.
      */
     @safe
     ref Unpacker unpackNil(T)(ref T value)
@@ -2734,7 +2734,7 @@ struct MPObject
      *  converted value.
      *
      * Throws:
-     *  InvalidTypeException if type is mismatched.
+     *  MessagePackException if type is mismatched.
      *
      * NOTE:
      *  Current implementation uses cast.
@@ -2863,7 +2863,7 @@ struct MPObject
             alias SerializingClasses!(T) Classes;
 
             if (via.array.length != SerializingMemberNumbers!(Classes))
-                throw new InvalidTypeException("The number of deserialized object member is mismatched");
+                throw new MessagePackException("The number of deserialized object member is mismatched");
 
             size_t offset;
             foreach (Class; Classes) {
@@ -2888,13 +2888,13 @@ struct MPObject
         } else {
             static if (isTuple!T) {
                 if (via.array.length != T.Types.length)
-                    throw new InvalidTypeException("The number of deserialized Tuple element is mismatched");
+                    throw new MessagePackException("The number of deserialized Tuple element is mismatched");
 
                 foreach (i, Type; T.Types)
                     obj.field[i] = via.array[i].as!(Type);
             } else {  // simple struct
                 if (via.array.length != obj.tupleof.length)
-                    throw new InvalidTypeException("The number of deserialized struct member is mismatched");
+                    throw new MessagePackException("The number of deserialized struct member is mismatched");
 
                 foreach (i, member; obj.tupleof)
                     obj.tupleof[i] = via.array[i].as!(typeof(member));
@@ -3075,7 +3075,7 @@ unittest
     try {
         auto b = object.as!(uint);
         assert(false);
-    } catch (InvalidTypeException e) { }
+    } catch (MessagePackException e) { }
 
     // unsigned integer
     object = MPObject(10UL);
@@ -3999,7 +3999,7 @@ private:
 @safe
 pure void onCastError()
 {
-    throw new InvalidTypeException("Attempt to cast with another type");
+    throw new MessagePackException("Attempt to cast with another type");
 }
 
 
@@ -4009,7 +4009,7 @@ pure void onCastError()
 @safe
 pure void onInvalidType()
 {
-    throw new InvalidTypeException("Attempt to unpack with non-compatible type");
+    throw new MessagePackException("Attempt to unpack with non-compatible type");
 }
 
 
@@ -4174,16 +4174,16 @@ mixin template MessagePackable(Members...)
          *  object = the MessagePack object to unpack.
          *
          * Throws:
-         *  InvalidTypeException if $(D_PARAM object) is not an Array type.
+         *  MessagePackException if $(D_PARAM object) is not an Array type.
          */
         void fromMsgpack(MPObject object)
         {
             // enables if std.contracts.enforce is moved to object_.d
-            // enforceEx!InvalidTypeException(object.type == MPType.array, "MPObject must be Array type");
+            // enforceEx!MessagePackException(object.type == MPType.array, "MPObject must be Array type");
             if (object.type != MPType.array)
-                throw new InvalidTypeException("MPObject must be an Array type");
+                throw new MessagePackException("MPObject must be an Array type");
             if (object.via.array.length != this.tupleof.length)
-                throw new InvalidTypeException("The size of deserialized object is mismatched");
+                throw new MessagePackException("The size of deserialized object is mismatched");
 
             foreach (i, member; this.tupleof)
                 this.tupleof[i] = object.via.array[i].as!(typeof(member));
@@ -4197,13 +4197,13 @@ mixin template MessagePackable(Members...)
          *  object = the reference to direct-conversion deserializer.
          *
          * Throws:
-         *  InvalidTypeException if the size of deserialized object is mismatched.
+         *  MessagePackException if the size of deserialized object is mismatched.
          */
         void fromMsgpack(ref Unpacker unpacker)
         {
             auto length = unpacker.beginArray();
             if (length != this.tupleof.length)
-                throw new InvalidTypeException("The size of deserialized object is mismatched");
+                throw new MessagePackException("The size of deserialized object is mismatched");
 
             foreach (i, member; this.tupleof)
                 unpacker.unpack(this.tupleof[i]);
@@ -4226,9 +4226,9 @@ mixin template MessagePackable(Members...)
         void fromMsgpack(MPObject object)
         {
             if (object.type != MPType.array)
-                throw new InvalidTypeException("MPObject must be an Array type");
+                throw new MessagePackException("MPObject must be an Array type");
             if (object.via.array.length != Members.length)
-                throw new InvalidTypeException("The size of deserialized object is mismatched");
+                throw new MessagePackException("The size of deserialized object is mismatched");
 
             foreach (i, member; Members)
                 mixin(member ~ "= object.via.array[i].as!(typeof(" ~ member ~ "));");
@@ -4242,7 +4242,7 @@ mixin template MessagePackable(Members...)
         {
             auto length = unpacker.beginArray();
             if (length != Members.length)
-                throw new InvalidTypeException("The size of deserialized object is mismatched");
+                throw new MessagePackException("The size of deserialized object is mismatched");
 
             foreach (member; Members)
                 unpacker.unpack(mixin(member));
