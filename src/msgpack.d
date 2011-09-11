@@ -2571,40 +2571,24 @@ unittest
 
 
 /**
- * $(D MessagePack) object type
- */
-enum MPType
-{
-    nil,       /// nil(null in D)
-    boolean,   /// true, false
-    unsigned,  /// positive fixnum, uint 8, uint 16, uint 32, uint 64
-    signed,    /// negative fixnum, int 8, int 16, int 32, int 64
-    floating,  /// float, double, real
-    array,     /// fix array, array 16, array 32
-    map,       /// fix map, map 16, map 32
-    raw        /// fix raw, raw 16, raw 32
-}
-
-
-/**
- * $(D MPObject) is a $(D MessagePack) object representation
+ * $(D Value) is a $(D MessagePack) value representation
  *
  * Example:
  * -----
  * auto unpacker = StreamingUnpacker(pack(1, 0.1L) ~ pack(true) ~ pack("foobarbaz"));
  *
  * foreach (unpacked; unpacker) {
- *     if (unpacked.type == MPType.array) {
+ *     if (unpacked.type == Value.Type.array) {
  *         foreach (obj; unpacked) {
  *             switch (obj.type) {
- *             case MPType.unsigned: writeln(obj.as!(uint)); break;
- *             case MPType.floating:            writeln(obj.as!(real)); break;
+ *             case Value.Type.unsigned: writeln(obj.as!(uint)); break;
+ *             case Value.Type.floating:            writeln(obj.as!(real)); break;
  *             defalut:
  *                 throw new Exception("Unknown type");
  *             }
  *         }
  *     } else {
- *         if (unpacked.type == MPType.boolean)
+ *         if (unpacked.type == Value.Type.boolean)
  *             writeln(unpacked.as!(bool));
  *         else
  *             writeln("Message: ", unpacked.as!(string));
@@ -2612,36 +2596,51 @@ enum MPType
  * }
  * -----
  */
-struct MPObject
+struct Value
 {
+    /**
+     * $(D MessagePack) value type
+     */
+    static enum Type
+    {
+        nil,       /// nil(null in D)
+        boolean,   /// true, false
+        unsigned,  /// positive fixnum, uint 8, uint 16, uint 32, uint 64
+        signed,    /// negative fixnum, int 8, int 16, int 32, int 64
+        floating,  /// float, double, real
+        array,     /// fix array, array 16, array 32
+        map,       /// fix map, map 16, map 32
+        raw        /// fix raw, raw 16, raw 32
+    }
+
     /**
      * msgpack value representation
      */
-    static union Value
+    static union Via
     {
-        bool               boolean;   /// corresponding to MPType.boolean
-        ulong              uinteger;  /// corresponding to MPType.unsigned
-        long               integer;   /// corresponding to MPType.signed
-        real               floating;  /// corresponding to MPType.floating
-        MPObject[]         array;     /// corresponding to MPType.array
-        MPObject[MPObject] map;       /// corresponding to MPType.map
-        ubyte[]            raw;       /// corresponding to MPType.raw
+        bool         boolean;   /// corresponding to Type.boolean
+        ulong        uinteger;  /// corresponding to Type.unsigned
+        long         integer;   /// corresponding to Type.signed
+        real         floating;  /// corresponding to Type.floating
+        Value[]      array;     /// corresponding to Type.array
+        Value[Value] map;       /// corresponding to Type.map
+        ubyte[]      raw;       /// corresponding to Type.raw
     }
 
 
-    MPType type;  /// represents object type 
-    Value  via;   /// represents real value
+    Type type;  /// represents value type 
+    Via  via;   /// represents real value
 
 
     /**
-     * Constructs a $(D MPObject) with arguments.
+     * Constructs a $(D Value) with arguments.
      *
      * Params:
      *  value = the real content.
-     *  type  = the type of object.
+     *  type  = the type of value.
      */
     @safe
-    this(MPType type = MPType.nil)
+    this(Type type = Type.nil)
     {
         this.type = type;
     }
@@ -2649,7 +2648,7 @@ struct MPObject
 
     /// ditto
     @trusted
-    this(bool value, MPType type = MPType.boolean)
+    this(bool value, Type type = Type.boolean)
     {
         this(type);
         via.boolean = value;
@@ -2658,7 +2657,7 @@ struct MPObject
 
     /// ditto
     @trusted
-    this(ulong value, MPType type = MPType.unsigned)
+    this(ulong value, Type type = Type.unsigned)
     {
         this(type);
         via.uinteger = value;
@@ -2667,7 +2666,7 @@ struct MPObject
 
     /// ditto
     @trusted
-    this(long value, MPType type = MPType.signed)
+    this(long value, Type type = Type.signed)
     {
         this(type);
         via.integer = value;
@@ -2676,7 +2675,7 @@ struct MPObject
 
     /// ditto
     @trusted
-    this(real value, MPType type = MPType.floating)
+    this(real value, Type type = Type.floating)
     {
         this(type);
         via.floating = value;
@@ -2685,7 +2684,7 @@ struct MPObject
 
     /// ditto
     @trusted
-    this(MPObject[] value, MPType type = MPType.array)
+    this(Value[] value, Type type = Type.array)
     {
         this(type);
         via.array = value;
@@ -2694,7 +2693,7 @@ struct MPObject
 
     /// ditto
     @trusted
-    this(MPObject[MPObject] value, MPType type = MPType.map)
+    this(Value[Value] value, Type type = Type.map)
     {
         this(type);
         via.map = value;
@@ -2703,7 +2702,7 @@ struct MPObject
 
     /// ditto
     @trusted
-    this(ubyte[] value, MPType type = MPType.raw)
+    this(ubyte[] value, Type type = Type.raw)
     {
         this(type);
         via.raw = value;
@@ -2711,7 +2710,7 @@ struct MPObject
 
 
     /**
-     * Converts object value to $(D_PARAM T) type.
+     * Converts value to $(D_PARAM T) type.
      *
      * Returns:
      *  converted value.
@@ -2725,7 +2724,7 @@ struct MPObject
     @property @trusted
     T as(T)() if (is(T == bool))
     {
-        if (type != MPType.boolean)
+        if (type != Type.boolean)
             onCastError();
 
         return via.boolean;
@@ -2736,10 +2735,10 @@ struct MPObject
     @property @trusted
     T as(T)() if (isIntegral!T)
     {
-        if (type == MPType.unsigned)
+        if (type == Type.unsigned)
             return cast(T)via.uinteger;
 
-        if (type == MPType.signed)
+        if (type == Type.signed)
             return cast(T)via.integer;
 
         onCastError();
@@ -2752,7 +2751,7 @@ struct MPObject
     @property @trusted
     T as(T)() if (isFloatingPoint!T)
     {
-        if (type != MPType.floating)
+        if (type != Type.floating)
             onCastError();
 
         return cast(T)via.floating;
@@ -2773,16 +2772,16 @@ struct MPObject
     {
         alias typeof(T.init[0]) V;
 
-        if (type == MPType.nil)
+        if (type == Type.nil)
             return null;
 
         static if (isByte!V || isSomeChar!V) {
-            if (type != MPType.raw)
+            if (type != Type.raw)
                 onCastError();
 
             return cast(T)via.raw;
         } else {
-            if (type != MPType.array)
+            if (type != Type.array)
                 onCastError();
 
             V[] array;
@@ -2802,10 +2801,10 @@ struct MPObject
         alias typeof(T.init.keys[0])   K;
         alias typeof(T.init.values[0]) V;
 
-        if (type == MPType.nil)
+        if (type == Type.nil)
             return null;
 
-        if (type != MPType.map)
+        if (type != Type.map)
             onCastError();
 
         V[K] map;
@@ -2822,7 +2821,7 @@ struct MPObject
      *
      * Calling $(D fromMsgpack) if $(D_KEYWORD class) and $(D_KEYWORD struct) implement $(D fromMsgpack) method. $(D fromMsgpack) signature is:
      * -----
-     * void fromMsgpack(MPObject object)
+     * void fromMsgpack(Value value)
      * -----
      * This method assigns converted values to all members of T object if $(D_KEYWORD class) and $(D_KEYWORD struct) don't implement $(D fromMsgpack).
      *
@@ -2835,7 +2834,7 @@ struct MPObject
     @property @trusted
     T as(T, Args...)(Args args) if (is(T == class))
     {
-        if (type == MPType.nil)
+        if (type == Type.nil)
             return null;
 
         T object = new T(args);
@@ -2897,30 +2896,30 @@ struct MPObject
     void toMsgpack(Packer)(ref Packer packer) const
     {
         final switch (type) {
-        case MPType.nil:
+        case Type.nil:
             packer.packNil();
             break;
-        case MPType.boolean:
+        case Type.boolean:
             packer.pack(via.boolean);
             break;
-        case MPType.unsigned:
+        case Type.unsigned:
             packer.pack(via.uinteger);
             break;
-        case MPType.signed:
+        case Type.signed:
             packer.pack(via.integer);
             break;
-        case MPType.floating:
+        case Type.floating:
             packer.pack(via.floating);
             break;
-        case MPType.raw:
+        case Type.raw:
             packer.pack(via.raw);
             break;
-        case MPType.array:
+        case Type.array:
             packer.beginArray(via.array.length);
             foreach (elem; via.array)
                 elem.toMsgpack(packer);
             break;
-        case MPType.map:
+        case Type.map:
             packer.beginMap(via.map.length);
             foreach (key, value; via.map) {
                 key.toMsgpack(packer);
@@ -2935,20 +2934,20 @@ struct MPObject
      * Comparison for equality. @trusted for union.
      */
     @trusted
-    bool opEquals(Tdummy = void)(ref const MPObject other) const
+    bool opEquals(Tdummy = void)(ref const Value other) const
     {
         if (type != other.type)
             return false;
 
         final switch (other.type) {
-        case MPType.nil:      return true;
-        case MPType.boolean:  return opEquals(other.via.boolean);
-        case MPType.unsigned: return opEquals(other.via.uinteger);
-        case MPType.signed:   return opEquals(other.via.integer);
-        case MPType.floating: return opEquals(other.via.floating);
-        case MPType.raw:      return opEquals(other.via.raw);
-        case MPType.array:    return opEquals(other.via.array);
-        case MPType.map:      return opEquals(other.via.map);
+        case Type.nil:      return true;
+        case Type.boolean:  return opEquals(other.via.boolean);
+        case Type.unsigned: return opEquals(other.via.uinteger);
+        case Type.signed:   return opEquals(other.via.integer);
+        case Type.floating: return opEquals(other.via.floating);
+        case Type.raw:      return opEquals(other.via.raw);
+        case Type.array:    return opEquals(other.via.array);
+        case Type.map:      return opEquals(other.via.map);
         }
     }
 
@@ -2957,7 +2956,7 @@ struct MPObject
     @trusted
     bool opEquals(T : bool)(in T other) const
     {
-        if (type != MPType.boolean)
+        if (type != Type.boolean)
             return false;
 
         return via.boolean == other;
@@ -2969,12 +2968,12 @@ struct MPObject
     bool opEquals(T : ulong)(in T other) const
     {
         static if (__traits(isUnsigned, T)) {
-            if (type != MPType.unsigned)
+            if (type != Type.unsigned)
                 return false;
 
             return via.uinteger == other;
         } else {
-            if (type != MPType.signed)
+            if (type != Type.signed)
                 return false;
 
             return via.integer == other;
@@ -2986,7 +2985,7 @@ struct MPObject
     @trusted
     bool opEquals(T : real)(in T other) const
     {
-        if (type != MPType.floating)
+        if (type != Type.floating)
             return false;
 
         return via.floating == other;
@@ -2995,9 +2994,9 @@ struct MPObject
 
     /// ditto
     @trusted
-    bool opEquals(T : MPObject[])(in T other) const
+    bool opEquals(T : Value[])(in T other) const
     {
-        if (type != MPType.array)
+        if (type != Type.array)
             return false;
 
         return via.array == other;
@@ -3006,9 +3005,9 @@ struct MPObject
 
     /// ditto
     @trusted
-    bool opEquals(T : MPObject[MPObject])(in T other) const
+    bool opEquals(T : Value[Value])(in T other) const
     {
-        if (type != MPType.map)
+        if (type != Type.map)
             return false;
 
         // This comparison is instead of default comparison because 'via.map == other' raises "Access Violation".
@@ -3029,7 +3028,7 @@ struct MPObject
     @trusted
     bool opEquals(T : ubyte[])(in T other) const
     {
-        if (type != MPType.raw)
+        if (type != Type.raw)
             return false;
 
         return via.raw == other;
@@ -3040,102 +3039,102 @@ struct MPObject
 unittest
 {
     // nil
-    MPObject object = MPObject();
-    MPObject other  = MPObject();
+    Value value = Value();
+    Value other = Value();
 
-    assert(object      == other);
-    assert(object.type == MPType.nil);
+    assert(value      == other);
+    assert(value.type == Value.Type.nil);
 
     // boolean
-    object = MPObject(true);
-    other  = MPObject(false);
+    value = Value(true);
+    other = Value(false);
 
-    assert(object           != other);
-    assert(object.type      == MPType.boolean);
-    assert(object.as!(bool) == true);
-    assert(other            == false);
+    assert(value           != other);
+    assert(value.type      == Value.Type.boolean);
+    assert(value.as!(bool) == true);
+    assert(other           == false);
 
     try {
-        auto b = object.as!(uint);
+        auto b = value.as!(uint);
         assert(false);
     } catch (MessagePackException e) { }
 
     // unsigned integer
-    object = MPObject(10UL);
-    other  = MPObject(10UL);
+    value = Value(10UL);
+    other = Value(10UL);
 
-    assert(object           == other);
-    assert(object.type      == MPType.unsigned);
-    assert(object.as!(uint) == 10);
-    assert(other            == 10UL);
+    assert(value           == other);
+    assert(value.type      == Value.Type.unsigned);
+    assert(value.as!(uint) == 10);
+    assert(other           == 10UL);
 
     // signed integer
-    object = MPObject(-20L);
-    other  = MPObject(-10L);
+    value = Value(-20L);
+    other = Value(-10L);
 
-    assert(object          != other);
-    assert(object.type     == MPType.signed);
-    assert(object.as!(int) == -20);
-    assert(other           == -10L);
+    assert(value          != other);
+    assert(value.type     == Value.Type.signed);
+    assert(value.as!(int) == -20);
+    assert(other          == -10L);
 
     // enum
     enum E : int { F = -20 }
 
-    E e = object.as!(E);
+    E e = value.as!(E);
 
     assert(e == E.F);
 
     // floating point
-    object = MPObject(0.1e-10L);
-    other  = MPObject(0.1e-20L);
+    value = Value(0.1e-10L);
+    other = Value(0.1e-20L);
 
-    assert(object           != other);
-    assert(object.type      == MPType.floating);
-    assert(object.as!(real) == 0.1e-10L);
-    assert(other            == 0.1e-20L);
+    assert(value           != other);
+    assert(value.type      == Value.Type.floating);
+    assert(value.as!(real) == 0.1e-10L);
+    assert(other           == 0.1e-20L);
 
     // raw
-    object = MPObject(cast(ubyte[])[72, 105, 33]);
-    other  = MPObject(cast(ubyte[])[72, 105, 33]);
+    value = Value(cast(ubyte[])[72, 105, 33]);
+    other = Value(cast(ubyte[])[72, 105, 33]);
 
-    assert(object             == other);
-    assert(object.type        == MPType.raw);
-    assert(object.as!(string) == "Hi!");
-    assert(other              == cast(ubyte[])[72, 105, 33]);
+    assert(value             == other);
+    assert(value.type        == Value.Type.raw);
+    assert(value.as!(string) == "Hi!");
+    assert(other             == cast(ubyte[])[72, 105, 33]);
 
     // array
-    auto t = MPObject(cast(ubyte[])[72, 105, 33]);
-    object = MPObject([t]);
-    other  = MPObject([t]);
+    auto t = Value(cast(ubyte[])[72, 105, 33]);
+    value = Value([t]);
+    other = Value([t]);
 
-    assert(object               == other);
-    assert(object.type          == MPType.array);
-    assert(object.as!(string[]) == ["Hi!"]);
-    assert(other                == [t]);
+    assert(value               == other);
+    assert(value.type          == Value.Type.array);
+    assert(value.as!(string[]) == ["Hi!"]);
+    assert(other               == [t]);
 
     // map
-    object = MPObject([MPObject(1L):MPObject(2L)]);
-    other  = MPObject([MPObject(1L):MPObject(1L)]);
+    value = Value([Value(1L):Value(2L)]);
+    other = Value([Value(1L):Value(1L)]);
 
-    assert(object               != other);
-    assert(object.type          == MPType.map);
-    assert(object.as!(int[int]) == [1:2]);
-    assert(other                == [MPObject(1L):MPObject(1L)]);
+    assert(value               != other);
+    assert(value.type          == Value.Type.map);
+    assert(value.as!(int[int]) == [1:2]);
+    assert(other               == [Value(1L):Value(1L)]);
 
-    object = MPObject(10UL);
+    value = Value(10UL);
 
     // struct
     static struct S
     {
         ulong num;
 
-        void fromMsgpack(MPObject object) { num = object.via.uinteger; }
+        void fromMsgpack(Value value) { num = value.via.uinteger; }
     }
 
-    S s = object.as!(S);
+    S s = value.as!(S);
     assert(s.num == 10);
 
-    object = MPObject([MPObject(0.5f), MPObject(cast(ubyte[])[72, 105, 33])]);
+    value = Value([Value(0.5f), Value(cast(ubyte[])[72, 105, 33])]);
 
     // struct
     static struct Simple
@@ -3144,21 +3143,21 @@ unittest
         string msg;
     }
 
-    Simple simple = object.as!(Simple);
+    Simple simple = value.as!(Simple);
     assert(simple.num == 0.5f);
     assert(simple.msg == "Hi!");
 
-    object = MPObject(10UL);
+    value = Value(10UL);
 
     // class
     static class C
     {
         ulong num;
 
-        void fromMsgpack(MPObject object) { num = object.via.uinteger; }
+        void fromMsgpack(Value value) { num = value.via.uinteger; }
     }
 
-    C c = object.as!(C);
+    C c = value.as!(C);
     assert(c.num == 10);
 
     static class SimpleA
@@ -3176,17 +3175,17 @@ unittest
         uint num = uint.max;
     }
 
-    object = MPObject([MPObject(false), MPObject(99UL), MPObject(cast(ulong)(uint.max / 2u))]);
+    value = Value([Value(false), Value(99UL), Value(cast(ulong)(uint.max / 2u))]);
 
-    SimpleC sc = object.as!(SimpleC);
+    SimpleC sc = value.as!(SimpleC);
     assert(sc.flag == false);
     assert(sc.type == 99);
     assert(sc.num  == uint.max / 2);
 
     // std.typecons.Tuple
-    object = MPObject([MPObject(true), MPObject(1UL), MPObject(cast(ubyte[])"Hi!")]);
+    value = Value([Value(true), Value(1UL), Value(cast(ubyte[])"Hi!")]);
 
-    auto tuple = object.as!(Tuple!(bool, uint, string));
+    auto tuple = value.as!(Tuple!(bool, uint, string));
     assert(tuple.field[0] == true);
     assert(tuple.field[1] == 1u);
     assert(tuple.field[2] == "Hi!");
@@ -3194,7 +3193,7 @@ unittest
     /* 
      * non-MessagePackable object is stopped by static assert
      * static struct NonMessagePackable {}
-     * auto nonMessagePackable = object.as!(NonMessagePackable);
+     * auto nonMessagePackable = value.as!(NonMessagePackable);
      */
 }
 
@@ -3204,21 +3203,21 @@ unittest
  */
 struct Unpacked
 {
-    MPObject object;  /// deserialized object
+    Value value;  /// deserialized value
 
-    alias object this;
+    alias value this;
 
 
     /**
      * Constructs a $(D Unpacked) with argument.
      *
      * Params:
-     *  object = a deserialized object.
+     *  value = a deserialized value.
      */
     @safe
-    this(ref MPObject object)
+    this(ref Value value)
     {
-        this.object = object;
+        this.value = value;
     }
 
 
@@ -3231,7 +3230,7 @@ struct Unpacked
     @property @trusted
     nothrow bool empty() const  // std.array.empty isn't nothrow function
     {
-        return (object.type == MPType.array) && !object.via.array.length;
+        return (value.type == Value.Type.array) && !value.via.array.length;
     }
 
 
@@ -3239,12 +3238,12 @@ struct Unpacked
      * Range primitive operation that returns the length of the range.
      *
      * Returns:
-     *  the number of objects.
+     *  the number of values.
      */
     @property @trusted
     size_t length()
     {
-        return object.via.array.length;
+        return value.via.array.length;
     }
 
 
@@ -3252,12 +3251,12 @@ struct Unpacked
      * InputRange primitive operation that returns the currently iterated element.
      *
      * Returns:
-     *  the deserialized $(D MPObject).
+     *  the deserialized $(D Value).
      */
     @property @trusted
-    ref MPObject front()
+    ref Value front()
     {
-        return object.via.array.front;
+        return value.via.array.front;
     }
 
 
@@ -3267,19 +3266,19 @@ struct Unpacked
     @trusted
     void popFront()
     {
-        object.via.array.popFront();
+        value.via.array.popFront();
     }
 
     /**
      * RandomAccessRange primitive operation.
      *
      * Returns:
-     *  the deserialized $(D MPObject) at $(D_PARAM n) position.
+     *  the deserialized $(D Value) at $(D_PARAM n) position.
      */
     @trusted
-    nothrow ref MPObject opIndex(size_t n)
+    nothrow ref Value opIndex(size_t n)
     {
-        return object.via.array[n];
+        return value.via.array[n];
     }
 
     /**
@@ -3290,24 +3289,24 @@ struct Unpacked
      *  to   = the end point of slicing.
      *
      * Returns:
-     *  the slice of MPObjects.
+     *  the slice of Values.
      */
     @trusted
-    MPObject[] opSlice(size_t from, size_t to)
+    Value[] opSlice(size_t from, size_t to)
     {
-        return object.via.array[from..to];
+        return value.via.array[from..to];
     }
 
     /**
      * Range primitive operation that returns the snapshot.
      *
      * Returns:
-     *  the snapshot of this MPObject.
+     *  the snapshot of this Value.
      */
     @property @safe
     Unpacked save()
     {
-        return Unpacked(object);
+        return Unpacked(value);
     }
 }
 
@@ -3335,7 +3334,7 @@ unittest
  *
  * while (unpacker.execute()) {
  *     foreach (obj; unpacker.purge()) {
- *         // do stuff (obj is a MPObject)
+ *         // do stuff (obj is a Value)
  *     }
  * }
  * 
@@ -3397,16 +3396,16 @@ struct StreamingUnpacker
     {
         static struct Container
         {
-            ContainerElement type;    // object container type
-            MPObject         object;  // current object
-            MPObject         key;     // for map object
-            size_t           count;   // container length
+            ContainerElement type;   // value container type
+            Value            value;  // current value
+            Value            key;    // for map value
+            size_t           count;  // container length
         }
 
         State       state;  // current state of deserialization
         size_t      trail;  // current deserializing size
         size_t      top;    // current index of stack
-        Container[] stack;  // storing objects
+        Container[] stack;  // storing values
     }
 
     Context context_;  // stack environment for streaming deserialization
@@ -3434,12 +3433,12 @@ struct StreamingUnpacker
      * Forwards to deserialized object.
      *
      * Returns:
-     *  the $(D Unpacked) object contains deserialized object.
+     *  the $(D Unpacked) object contains deserialized value.
      */
     @property @safe
     Unpacked unpacked()
     {
-        return Unpacked(context_.stack[0].object);
+        return Unpacked(context_.stack[0].value);
     }
 
 
@@ -3473,12 +3472,12 @@ struct StreamingUnpacker
      * -----
      *
      * Returns:
-     *  the $(D Unpacked) object contains deserialized object.
+     *  the $(D Unpacked) object contains deserialized value.
      */
     @safe
     Unpacked purge()
     {
-        auto result = Unpacked(context_.stack[0].object);
+        auto result = Unpacked(context_.stack[0].value);
 
         clear();
 
@@ -3504,7 +3503,7 @@ struct StreamingUnpacker
 
         bool     ret;
         size_t   cur = offset_;
-        MPObject obj;
+        Value obj;
 
         // restores before state
         auto state =  context_.state;
@@ -3517,7 +3516,7 @@ struct StreamingUnpacker
          */
         bool startContainer(string Type)(ContainerElement type, size_t length)
         {
-            mixin("callback" ~ Type ~ "((*stack)[top].object, length);");
+            mixin("callback" ~ Type ~ "((*stack)[top].value, length);");
 
             if (length == 0)
                 return false;
@@ -3726,9 +3725,9 @@ struct StreamingUnpacker
 
             final switch (container.type) {
             case ContainerElement.ARRAY_ITEM:
-                container.object.via.array ~= obj;
+                container.value.via.array ~= obj;
                 if (--container.count == 0) {
-                    obj = container.object;
+                    obj = container.value;
                     top--;
                     goto Lpush;
                 }
@@ -3738,9 +3737,9 @@ struct StreamingUnpacker
                 container.type = ContainerElement.MAP_VALUE;
                 break;
             case ContainerElement.MAP_VALUE:
-                container.object.via.map[container.key] = obj;
+                container.value.via.map[container.key] = obj;
                 if (--container.count == 0) {
-                    obj = container.object;
+                    obj = container.value;
                     top--;
                     goto Lpush;
                 }
@@ -3755,7 +3754,7 @@ struct StreamingUnpacker
         goto Labort;
 
       Lfinish:
-        (*stack)[0].object = obj;
+        (*stack)[0].value = obj;
         ret = true;
         cur++;
         goto Lend;
@@ -3776,14 +3775,14 @@ struct StreamingUnpacker
 
     /**
      * supports foreach. One loop provides $(D Unpacked) object contains execute() result.
-     * This is convenient in case that $(D MessagePack) objects are continuous.
+     * This is convenient in case that $(D MessagePack) values are continuous.
      */
     int opApply(scope int delegate(ref Unpacked) dg)
     {
         int result;
 
         while (execute()) {
-            result = dg(Unpacked(context_.stack[0].object));
+            result = dg(Unpacked(context_.stack[0].value));
             if (result)
                 break;
 
@@ -3832,7 +3831,7 @@ unittest
 
     auto result = unpacked.via.array;
 
-    assert(result[0].type          == MPType.nil);
+    assert(result[0].type          == Value.Type.nil);
     assert(result[1].via.boolean   == true);
     assert(result[2].via.uinteger  == 1);
     assert(result[3].via.integer   == -2);
@@ -3847,129 +3846,129 @@ private:
 
 
 /*
- * Sets object type and value.
+ * Sets value type and value.
  *
  * Params:
- *  object = the object to set
- *  value  = the content to set
+ *  value = the value to set
+ *  number = the content to set
  */
 @trusted
-void callbackUInt(ref MPObject object, ulong value)
+void callbackUInt(ref Value value, ulong number)
 {
-    object.type         = MPType.unsigned;
-    object.via.uinteger = value;
+    value.type         = Value.Type.unsigned;
+    value.via.uinteger = number;
 }
 
 
 /// ditto
 @trusted
-void callbackInt(ref MPObject object, long value)
+void callbackInt(ref Value value, long number)
 {
-    object.type        = MPType.signed;
-    object.via.integer = value;
+    value.type        = Value.Type.signed;
+    value.via.integer = number;
 }
 
 
 /// ditto
 @trusted
-void callbackFloat(ref MPObject object, real value)
+void callbackFloat(ref Value value, real number)
 {
-    object.type         = MPType.floating;
-    object.via.floating = value;
+    value.type         = Value.Type.floating;
+    value.via.floating = number;
 }
 
 
 /// ditto
 @trusted
-void callbackRaw(ref MPObject object, ubyte[] raw)
+void callbackRaw(ref Value value, ubyte[] raw)
 {
-    object.type    = MPType.raw;
-    object.via.raw = raw;
+    value.type    = Value.Type.raw;
+    value.via.raw = raw;
 }
 
 
 /// ditto
 @trusted
-void callbackArray(ref MPObject object, size_t length)
+void callbackArray(ref Value value, size_t length)
 {
-    object.type = MPType.array;
-    object.via.array.length = 0;
-    object.via.array.reserve(length);
+    value.type = Value.Type.array;
+    value.via.array.length = 0;
+    value.via.array.reserve(length);
 }
 
 
 /// ditto
 @trusted
-void callbackMap(ref MPObject object, lazy size_t length)
+void callbackMap(ref Value value, lazy size_t length)
 {
-    object.type    = MPType.map;
-    object.via.map = null;  // clears previous result avoiding 'Access Violation'
+    value.type    = Value.Type.map;
+    value.via.map = null;  // clears previous result avoiding 'Access Violation'
 }
 
 
 /// ditto
 @safe
-void callbackNil(ref MPObject object)
+void callbackNil(ref Value value)
 {
-    object.type = MPType.nil;
+    value.type = Value.Type.nil;
 }
 
 
 /// ditto
 @trusted
-void callbackBool(ref MPObject object, bool value)
+void callbackBool(ref Value value, bool boolean)
 {
-    object.type        = MPType.boolean;
-    object.via.boolean = value;
+    value.type        = Value.Type.boolean;
+    value.via.boolean = boolean;
 }
 
 
 unittest
 {
-    MPObject object;
+    Value value;
 
     // Unsigned integer
-    callbackUInt(object, uint.max);
-    assert(object.type         == MPType.unsigned);
-    assert(object.via.uinteger == uint.max);
+    callbackUInt(value, uint.max);
+    assert(value.type         == Value.Type.unsigned);
+    assert(value.via.uinteger == uint.max);
 
     // Signed integer
-    callbackInt(object, int.min);
-    assert(object.type        == MPType.signed);
-    assert(object.via.integer == int.min);
+    callbackInt(value, int.min);
+    assert(value.type        == Value.Type.signed);
+    assert(value.via.integer == int.min);
 
     // Floating point
-    callbackFloat(object, real.max);
-    assert(object.type         == MPType.floating);
-    assert(object.via.floating == real.max);
+    callbackFloat(value, real.max);
+    assert(value.type         == Value.Type.floating);
+    assert(value.via.floating == real.max);
 
     // Raw
-    callbackRaw(object, cast(ubyte[])[1]);
-    assert(object.type    == MPType.raw);
-    assert(object.via.raw == cast(ubyte[])[1]);
+    callbackRaw(value, cast(ubyte[])[1]);
+    assert(value.type    == Value.Type.raw);
+    assert(value.via.raw == cast(ubyte[])[1]);
 
     // Array
-    MPObject[] array; array.reserve(16);
+    Value[] array; array.reserve(16);
 
-    callbackArray(object, 16);
-    assert(object.type               == MPType.array);
-    assert(object.via.array.capacity == array.capacity);
+    callbackArray(value, 16);
+    assert(value.type               == Value.Type.array);
+    assert(value.via.array.capacity == array.capacity);
 
     // Map
-    MPObject[MPObject] map;
+    Value[Value] map;
 
-    callbackMap(object, 16);
-    assert(object.type    == MPType.map);
-    assert(object.via.map == null);
+    callbackMap(value, 16);
+    assert(value.type    == Value.Type.map);
+    assert(value.via.map == null);
 
     // NIL
-    callbackNil(object);
-    assert(object.type == MPType.nil);
+    callbackNil(value);
+    assert(value.type == Value.Type.nil);
 
     // Bool
-    callbackBool(object, true);
-    assert(object.type        == MPType.boolean);
-    assert(object.via.boolean == true);
+    callbackBool(value, true);
+    assert(value.type        == Value.Type.boolean);
+    assert(value.via.boolean == true);
 }
 
 
@@ -4035,10 +4034,10 @@ unittest
 
     auto deserialized = unpack(pack(1, true, "Foo"));
 
-    assert(deserialized.type == MPType.array);
-    assert(deserialized.via.array[0].type == MPType.unsigned);
-    assert(deserialized.via.array[1].type == MPType.boolean);
-    assert(deserialized.via.array[2].type == MPType.raw);
+    assert(deserialized.type == Value.Type.array);
+    assert(deserialized.via.array[0].type == Value.Type.unsigned);
+    assert(deserialized.via.array[1].type == Value.Type.boolean);
+    assert(deserialized.via.array[2].type == Value.Type.raw);
 }
 
 
@@ -4151,25 +4150,25 @@ mixin template MessagePackable(Members...)
 
 
         /**
-         * Deserializes $(D MessagePack) object to members using MPObject.
+         * Deserializes $(D MessagePack) object to members using Value.
          *
          * Params:
-         *  object = the MessagePack object to unpack.
+         *  value = the MessagePack value to unpack.
          *
          * Throws:
-         *  MessagePackException if $(D_PARAM object) is not an Array type.
+         *  MessagePackException if $(D_PARAM value) is not an Array type.
          */
-        void fromMsgpack(MPObject object)
+        void fromMsgpack(Value value)
         {
             // enables if std.contracts.enforce is moved to object_.d
-            // enforceEx!MessagePackException(object.type == MPType.array, "MPObject must be Array type");
-            if (object.type != MPType.array)
-                throw new MessagePackException("MPObject must be an Array type");
-            if (object.via.array.length != this.tupleof.length)
-                throw new MessagePackException("The size of deserialized object is mismatched");
+            // enforceEx!MessagePackException(value.type == Value.Type.array, "Value must be Array type");
+            if (value.type != Value.Type.array)
+                throw new MessagePackException("Value must be an Array type");
+            if (value.via.array.length != this.tupleof.length)
+                throw new MessagePackException("The size of deserialized value is mismatched");
 
             foreach (i, member; this.tupleof)
-                this.tupleof[i] = object.via.array[i].as!(typeof(member));
+                this.tupleof[i] = value.via.array[i].as!(typeof(member));
         }
 
 
@@ -4177,16 +4176,16 @@ mixin template MessagePackable(Members...)
          * Deserializes $(D MessagePack) object to members using direct-conversion deserializer.
          *
          * Params:
-         *  object = the reference to direct-conversion deserializer.
+         *  value = the reference to direct-conversion deserializer.
          *
          * Throws:
-         *  MessagePackException if the size of deserialized object is mismatched.
+         *  MessagePackException if the size of deserialized value is mismatched.
          */
         void fromMsgpack(ref Unpacker unpacker)
         {
             auto length = unpacker.beginArray();
             if (length != this.tupleof.length)
-                throw new MessagePackException("The size of deserialized object is mismatched");
+                throw new MessagePackException("The size of deserialized value is mismatched");
 
             foreach (i, member; this.tupleof)
                 unpacker.unpack(this.tupleof[i]);
@@ -4204,17 +4203,17 @@ mixin template MessagePackable(Members...)
 
 
         /**
-         * Member selecting version of fromMsgpack for MPObject.
+         * Member selecting version of fromMsgpack for Value.
          */
-        void fromMsgpack(MPObject object)
+        void fromMsgpack(Value value)
         {
-            if (object.type != MPType.array)
-                throw new MessagePackException("MPObject must be an Array type");
-            if (object.via.array.length != Members.length)
-                throw new MessagePackException("The size of deserialized object is mismatched");
+            if (value.type != Value.Type.array)
+                throw new MessagePackException("Value must be an Array type");
+            if (value.via.array.length != Members.length)
+                throw new MessagePackException("The size of deserialized value is mismatched");
 
             foreach (i, member; Members)
-                mixin(member ~ "= object.via.array[i].as!(typeof(" ~ member ~ "));");
+                mixin(member ~ "= value.via.array[i].as!(typeof(" ~ member ~ "));");
         }
 
 
@@ -4225,7 +4224,7 @@ mixin template MessagePackable(Members...)
         {
             auto length = unpacker.beginArray();
             if (length != Members.length)
-                throw new MessagePackException("The size of deserialized object is mismatched");
+                throw new MessagePackException("The size of deserialized value is mismatched");
 
             foreach (member; Members)
                 unpacker.unpack(mixin(member));

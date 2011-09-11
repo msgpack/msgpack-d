@@ -22,11 +22,11 @@ void main()
     auto unpacker = StreamingUnpacker(test1);
 
     foreach (unpacked; unpacker) {
-        if (unpacked.type == MPType.array) {
+        if (unpacked.type == Value.Type.array) {
             foreach (obj; unpacked) {
                 switch (obj.type) {
-                case MPType.unsigned: writeln(obj.as!(uint)); break;
-                case MPType.floating: writeln(obj.as!(real)); break;
+                case Value.Type.unsigned: writeln(obj.as!(uint)); break;
+                case Value.Type.floating: writeln(obj.as!(real)); break;
                 default:
                     throw new Exception("Unknown type");
                 }
