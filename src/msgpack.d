@@ -681,7 +681,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
             }
         }
 
-        if (array is null)
+        if (array.empty)
             return packNil();
 
         // Raw bytes
@@ -859,7 +859,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
     /// ditto
     ref Packer packMap(Types...)(auto ref Types objects)
     {
-        static assert(Types.length % 2 == 1, "The number of arguments must be even");
+        static assert(Types.length % 2 == 0, "The number of arguments must be even");
 
         beginMap(Types.length / 2);
         foreach (i, T; Types)
@@ -2098,7 +2098,7 @@ struct Unpacker
     /// ditto
     ref Unpacker unpackMap(Types...)(ref Types objects)
     {
-        static assert(Types.length % 2 == 1, "The number of arguments must be even");
+        static assert(Types.length % 2 == 0, "The number of arguments must be even");
 
         auto length = beginMap();
         if (length != Types.length / 2)

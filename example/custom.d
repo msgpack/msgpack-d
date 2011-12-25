@@ -97,7 +97,7 @@ class BTree(Key, Data)
         void fromMsgpack(ref Unpacker unpacker)
         {
             if (unpacker.beginArray() == 4) {
-                size_t max;
+                uint max;
 
                 unpacker.unpack(childs, max, low);
                 child.length = unpacker.beginArray();
