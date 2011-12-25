@@ -108,7 +108,8 @@ struct RefBuffer
         size_t  used;  // used size of data
     }
 
-    immutable size_t Threshold, ChunkSize;
+    // immutable causes "Error: can only initialize const member stream_ inside constructor".
+    /* immutable */ size_t Threshold, ChunkSize;
 
     // for putCopy
     Chunk[] chunks_;  // memory chunk for buffer
@@ -127,7 +128,7 @@ struct RefBuffer
      *  chunkSize = the default size of chunk for allocation.
      */
     @safe
-    this(in size_t threshold = 32, in size_t chunkSize = 8192)
+    this(in size_t threshold, in size_t chunkSize = 8192)
     {
         Threshold = threshold;
         ChunkSize = chunkSize;
