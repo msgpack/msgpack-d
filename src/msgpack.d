@@ -626,10 +626,20 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
     }
 
 
+    /// Overload for pack(null) for 2.057 or later
+    static if (!is(typeof(null) == void*))
+    {
+        ref Packer pack(T)(in T value) if (is(Unqual!T == typeof(null)))
+        {
+            return packNil();
+        }
+    }
+
+
     /// ditto
     ref Packer pack(T)(in T value) if (isPointer!T)
     {
-        static if (is(Unqual!T == void*)) {  // for pack(null)
+        static if (is(Unqual!T == void*)) {  // for pack(null) for 2.056 or earlier
             enforce(value is null, "Can't serialize void type");
             stream_.put(Format.NIL);
         } else {
@@ -709,8 +719,18 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
     /// ditto
     ref Packer pack(Types...)(auto ref Types objects)
     {
-        foreach (i, T; Types)
-            pack(objects[i]);
+        foreach (i, T; Types) {
+            // @@@BUG@@@: passing typeof(null) to other function causes compilation error.
+            static if (!is(typeof(null) == void*)) {
+                static if (is(Unqual!T == typeof(null))) {
+                    pack(null);
+                } else {
+                    pack(objects[i]);
+                }
+            } else {
+                pack(objects[i]);
+            }
+        }
 
         return this;
     }
@@ -818,9 +838,19 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
     ref Packer packArray(Types...)(auto ref Types objects)
     {
         beginArray(Types.length);
-        foreach (i, T; Types)
-            pack(objects[i]);
-        // pack(objects);  // slow :(
+        foreach (i, T; Types) {
+            // @@@BUG@@@: See pack(Types...) comment.
+            static if (!is(typeof(null) == void*)) {
+                static if (is(Unqual!T == typeof(null))) {
+                    pack(null);
+                } else {
+                    pack(objects[i]);
+                }
+            } else {
+                pack(objects[i]);
+            }
+        }
+        //pack(objects);  // slow :(
 
         return this;
     }
@@ -2994,7 +3024,7 @@ struct Value
 
     /// ditto
     @trusted
-    bool opEquals(T : Value[])(in T other) const
+    bool opEquals(T : const Value[])(in T other) const
     {
         if (type != Type.array)
             return false;
@@ -3005,7 +3035,7 @@ struct Value
 
     /// ditto
     @trusted
-    bool opEquals(T : Value[Value])(in T other) const
+    bool opEquals(T : const Value[Value])(in T other) const
     {
         if (type != Type.map)
             return false;
