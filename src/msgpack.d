@@ -718,20 +718,10 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer pack(Types...)(auto ref Types objects)
+    ref Packer pack(Types...)(auto ref const Types objects)
     {
-        foreach (i, T; Types) {
-            // @@@BUG@@@: passing typeof(null) to other function causes compilation error.
-            static if (!is(typeof(null) == void*)) {
-                static if (is(Unqual!T == typeof(null))) {
-                    pack(null);
-                } else {
-                    pack(objects[i]);
-                }
-            } else {
-                pack(objects[i]);
-            }
-        }
+        foreach (i, T; Types)
+            pack(objects[i]);
 
         return this;
     }
@@ -836,21 +826,11 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
      * Returns:
      *  self, i.e. for method chaining.
      */
-    ref Packer packArray(Types...)(auto ref Types objects)
+    ref Packer packArray(Types...)(auto ref const Types objects)
     {
         beginArray(Types.length);
-        foreach (i, T; Types) {
-            // @@@BUG@@@: See pack(Types...) comment.
-            static if (!is(typeof(null) == void*)) {
-                static if (is(Unqual!T == typeof(null))) {
-                    pack(null);
-                } else {
-                    pack(objects[i]);
-                }
-            } else {
-                pack(objects[i]);
-            }
-        }
+        foreach (i, T; Types)
+            pack(objects[i]);
         //pack(objects);  // slow :(
 
         return this;
@@ -858,7 +838,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer packMap(Types...)(auto ref Types objects)
+    ref Packer packMap(Types...)(auto ref const Types objects)
     {
         static assert(Types.length % 2 == 0, "The number of arguments must be even");
 
