@@ -1918,7 +1918,10 @@ struct Unpacker
             }
 
             canRead(length, offset + Offset);
-            array = cast(T)read(length);
+            static if (isStaticArray!T) {
+        		array = (cast(U[])read(length))[0 .. T.length];
+			} else
+                array = cast(T)read(length);
 
             static if (isDynamicArray!T)
                 hasRaw_ = true;
