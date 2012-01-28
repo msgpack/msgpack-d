@@ -1919,9 +1919,10 @@ struct Unpacker
 
             canRead(length, offset + Offset);
             static if (isStaticArray!T) {
-        		array = (cast(U[])read(length))[0 .. T.length];
-			} else
+                array = (cast(U[])read(length))[0 .. T.length];
+            } else {
                 array = cast(T)read(length);
+            }
 
             static if (isDynamicArray!T)
                 hasRaw_ = true;
@@ -2427,9 +2428,9 @@ unittest
     { // container
         mixin DefinePacker;
 
-        Tuple!(ulong[], double[uint], string, bool[2]) result,
+        Tuple!(ulong[], double[uint], string, bool[2], char[2]) result,
             test = tuple([1UL, 2], [3U:4.0, 5:6.0, 7:8.0],
-                         "MessagePack is nice!", [true, false]);
+                         "MessagePack is nice!", [true, false], "D!");
 
         packer.pack(test);
 
