@@ -28,11 +28,6 @@
  * Copyright: Copyright Masahiro Nakagawa 2010-.
  * License:   <a href="http://www.boost.org/LICENSE_1_0.txt">Boost License 1.0</a>.
  * Authors:   Masahiro Nakagawa
- *
- *          Copyright Masahiro Nakagawa 2010-.
- * Distributed under the Boost Software License, Version 1.0.
- *    (See accompanying file LICENSE_1_0.txt or copy at
- *          http://www.boost.org/LICENSE_1_0.txt)
  */
 module msgpack;
 
@@ -318,6 +313,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
     Stream                   stream_;  // the stream to write
     ubyte[Offset + RealSize] store_;   // stores serialized value
+    bool                     withFieldName_;
 
 
   public:
@@ -325,12 +321,14 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
      * Constructs a packer with $(D_PARAM stream).
      *
      * Params:
-     *  stream = the stream to write.
+     *  stream        = the stream to write.
+     *  withFieldName = serialize a field name at class or struct
      */
     @safe
-    this(Stream stream)
+    this(Stream stream, bool withFieldName = false)
     {
-        stream_ = stream;
+        stream_        = stream;
+        withFieldName_ = withFieldName;
     }
 
 
@@ -769,7 +767,9 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
         if (object is null)
             return packNil();
 
-        static if (__traits(compiles, { T t; t.toMsgpack(this); })) {
+        static if (__traits(compiles, { T t; t.toMsgpack(this, withFieldName_); })) {
+            object.toMsgpack(this, withFieldName_);
+        } else static if (__traits(compiles, { T t; t.toMsgpack(this); })) { // backward compatible
             object.toMsgpack(this);
         } else {
             // TODO: Add object serialization handler
@@ -779,11 +779,23 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
             alias SerializingClasses!(T) Classes;
 
-            beginArray(SerializingMemberNumbers!(Classes));
+            immutable memberNum = SerializingMemberNumbers!(Classes);
+            if (withFieldName_)
+                beginMap(memberNum);
+            else
+                beginArray(memberNum);
+
             foreach (Class; Classes) {
                 Class obj = cast(Class)object;
-                foreach (f ; obj.tupleof)
-                    pack(f);
+                if (withFieldName_) {
+                    foreach (i, f ; obj.tupleof) {
+                        pack(getFieldName!(Class, i));
+                        pack(f);
+                    }
+                } else {
+                    foreach (f ; obj.tupleof)
+                        pack(f);
+                }
             }
         }
 
@@ -794,16 +806,30 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
     /// ditto
     ref Packer pack(T)(auto ref T object) if (is(Unqual!T == struct))
     {
-        static if (__traits(compiles, { T t; t.toMsgpack(this); })) {
+        static if (__traits(compiles, { T t; t.toMsgpack(this, withFieldName_); })) {
+            object.toMsgpack(this, withFieldName_);
+        } else static if (__traits(compiles, { T t; t.toMsgpack(this); })) { // backward compatible
             object.toMsgpack(this);
         } else static if (isTuple!T) {
             beginArray(object.field.length);
             foreach (f; object.field)
                 pack(f);
         } else {  // simple struct
-            beginArray(object.tupleof.length);
-            foreach (f; object.tupleof)
-                pack(f);
+            immutable memberNum = object.tupleof.length;
+            if (withFieldName_)
+                beginMap(memberNum);
+            else
+                beginArray(memberNum);
+
+            if (withFieldName_) {
+                foreach (i, f; object.tupleof) {
+                    pack(getFieldName!(T, i));
+                    pack(f);
+                }
+            } else {
+                foreach (f; object.tupleof)
+                    pack(f);
+            }
         }
 
         return this;
@@ -938,9 +964,9 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
  *  a $(D Packer) object instantiated and initialized according to the arguments.
  */
 @safe
-Packer!(Stream) packer(Stream)(Stream stream)
+Packer!(Stream) packer(Stream)(Stream stream, bool withFieldName = false)
 {
-    return typeof(return)(stream);
+    return typeof(return)(stream, withFieldName);
 }
 
 
@@ -951,6 +977,11 @@ version (unittest)
     mixin template DefinePacker()
     {
         SimpleBuffer buffer; Packer!(SimpleBuffer*) packer = packer(&buffer);
+    }
+
+    mixin template DefineDictionalPacker()
+    {
+        SimpleBuffer buffer; Packer!(SimpleBuffer*) packer = packer(&buffer, true);
     }
 }
 
@@ -4028,9 +4059,9 @@ public:
  * Returns:
  *  a serialized data.
  */
-ubyte[] pack(Args...)(in Args args)
+ubyte[] pack(bool withFieldName = false, Args...)(in Args args)
 {
-    auto packer = packer(Appender!(ubyte[])());
+    auto packer = packer(Appender!(ubyte[])(), withFieldName);
 
     static if (Args.length == 1)
         packer.pack(args[0]);
@@ -4156,11 +4187,19 @@ mixin template MessagePackable(Members...)
          * Params:
          *  packer = the serializer to pack.
          */
-        void toMsgpack(Packer)(ref Packer packer) const
+        void toMsgpack(Packer)(ref Packer packer, bool withFieldName = false) const
         {
-            packer.beginArray(this.tupleof.length);
-            foreach (member; this.tupleof)
-                packer.pack(member);
+            if (withFieldName) {
+                packer.beginMap(this.tupleof.length);
+                foreach (i, member; this.tupleof) {
+                    pack(getFieldName!(typeof(this), i));
+                    packer.pack(member);
+                }
+            } else {
+                packer.beginArray(this.tupleof.length);
+                foreach (member; this.tupleof)
+                    packer.pack(member);
+            }
         }
 
 
@@ -4209,11 +4248,19 @@ mixin template MessagePackable(Members...)
         /**
          * Member selecting version of toMsgpack.
          */
-        void toMsgpack(Packer)(ref Packer packer) const
+        void toMsgpack(Packer)(ref Packer packer, bool withFieldName = false) const
         {
-            packer.beginArray(Members.length);
-            foreach (member; Members)
-                packer.pack(mixin(member));
+            if (withFieldName) {
+                packer.beginMap(Members.length);
+                foreach (member; Members) {
+                    packer.pack(member);
+                    packer.pack(mixin(member));
+                }
+            } else {
+                packer.beginArray(Members.length);
+                foreach (member; Members)
+                    packer.pack(mixin(member));
+            }
         }
 
 
