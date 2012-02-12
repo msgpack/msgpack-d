@@ -718,7 +718,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer pack(Types...)(auto ref const Types objects)
+    ref Packer pack(Types...)(auto ref const Types objects) if (Types.length > 1)
     {
         foreach (i, T; Types)
             pack(objects[i]);
@@ -4461,6 +4461,21 @@ template SerializingMemberNumbers(Classes...)
 template SerializingClasses(T)
 {
     alias TypeTuple!(Reverse!(Erase!(Object, BaseClassesTuple!(T))), T) SerializingClasses;
+}
+
+
+/**
+ * Get a field name of class or struct.
+ */
+template getFieldName(Type, size_t i)
+{
+    import std.conv : text;
+
+    static assert((is(Unqual!Type == class) || is(Unqual!Type == struct)), "Type must be class or struct: type = " ~ Type.stringof);
+    static assert(i < Type.tupleof.length, text(Type.stringof, " has ", Type.tupleof.length, " attributes: given index = ", i));
+
+    // 3 means () + .
+    enum getFieldName = Type.tupleof[i].stringof[3 + Type.stringof.length..$];
 }
 
 
