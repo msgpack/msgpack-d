@@ -1,6 +1,6 @@
 # build mode: 32bit or 64bit
 ifeq (,$(MODEL))
-	MODEL := 32
+	MODEL := 64
 endif
 
 ifeq (,$(DMD))
