@@ -103,8 +103,8 @@ struct RefBuffer
         size_t  used;  // used size of data
     }
 
-    // immutable causes "Error: can only initialize const member stream_ inside constructor".
-    /* immutable */ size_t Threshold, ChunkSize;
+    immutable size_t Threshold;
+    immutable size_t ChunkSize;
 
     // for putCopy
     Chunk[] chunks_;  // memory chunk for buffer
@@ -3123,12 +3123,14 @@ unittest
     assert(value.as!(int) == -20);
     assert(other          == -10L);
 
+    /**
+     * "src/msgpack.d(3129): Error: cannot resolve type for value.as!(E)" occured in dmd 2.059.
     // enum
     enum E : int { F = -20 }
 
     E e = value.as!(E);
-
     assert(e == E.F);
+     */
 
     // floating point
     value = Value(0.1e-10L);
@@ -4301,7 +4303,7 @@ unittest
     { // all members
         /*
          * Comment out because "src/msgpack.d(4048): Error: struct msgpack.__unittest16.S no size yet for forward reference" occurs
-         *
+         */
         static struct S
         {
             uint num; string str;
@@ -4313,7 +4315,7 @@ unittest
         S orig = S(10, "Hi!"); orig.toMsgpack(packer);
 
         { // stream
-            auto unpacker = unpacker(packer.stream.data); unpacker.execute();
+            auto unpacker = StreamingUnpacker(packer.stream.data); unpacker.execute();
 
             S result; result.fromMsgpack(unpacker.unpacked);
 
@@ -4328,7 +4330,6 @@ unittest
             assert(result.num == 10);
             assert(result.str == "Hi!");
         }
-        */
     }
     { // member select
         static class C
