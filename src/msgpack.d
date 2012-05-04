@@ -3547,8 +3547,8 @@ struct StreamingUnpacker
          * This Complexity for performance(avoid function call).
          */
 
-        bool     ret;
-        size_t   cur = offset_;
+        bool   ret;
+        size_t cur = offset_;
         Value obj;
 
         // restores before state
@@ -3828,7 +3828,8 @@ struct StreamingUnpacker
         int result;
 
         while (execute()) {
-            result = dg(Unpacked(context_.stack[0].value));
+            auto unpackedResult = Unpacked(context_.stack[0].value);
+            result = dg(unpackedResult);
             if (result)
                 break;
 
