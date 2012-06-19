@@ -2597,14 +2597,12 @@ unittest
     }
     { // scan / opApply
         ubyte[] data;
+        mixin DefinePacker;
 
-        foreach (i; 0..2) {
-            mixin DefinePacker;
+        foreach (i; 0..2)
             packer.pack(tuple(1, 0.5, "Hi!"));
-            data ~= packer.stream.data;
-        }
 
-        foreach (n, d, s; &Unpacker(data).scan!(int, double, string)) {
+        foreach (n, d, s; &Unpacker(packer.stream.data).scan!(int, double, string)) {
             assert(n == 1);
             assert(d == 0.5);
             assert(s == "Hi!");
