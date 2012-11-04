@@ -3121,14 +3121,11 @@ unittest
     assert(value.as!(int) == -20);
     assert(other          == -10L);
 
-    /**
-     * "src/msgpack.d(3129): Error: cannot resolve type for value.as!(E)" occured in dmd 2.059.
     // enum
     enum E : int { F = -20 }
 
     E e = value.as!(E);
     assert(e == E.F);
-     */
 
     // floating point
     value = Value(0.1e-10L);
