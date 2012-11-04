@@ -324,7 +324,6 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
      *  stream        = the stream to write.
      *  withFieldName = serialize a field name at class or struct
      */
-    @safe
     this(Stream stream, bool withFieldName = false)
     {
         stream_        = stream;
@@ -963,7 +962,6 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
  * Returns:
  *  a $(D Packer) object instantiated and initialized according to the arguments.
  */
-@safe
 Packer!(Stream) packer(Stream)(Stream stream, bool withFieldName = false)
 {
     return typeof(return)(stream, withFieldName);
@@ -1363,7 +1361,7 @@ version (D_Ddoc)
          * Params:
          *  target = new serialized buffer to deserialize.
          */
-        /* @safe */ void feed(in ubyte[] target);
+        @safe void feed(in ubyte[] target);
 
 
         /**
@@ -1433,7 +1431,8 @@ else
         }
 
 
-        /* @safe */ void feed(in ubyte[] target)
+        @safe
+        void feed(in ubyte[] target)
         in
         {
             assert(target.length);
@@ -1530,7 +1529,7 @@ else
 
       private:
         @safe
-        void initializeBuffer(in ubyte[] target, in size_t bufferSize = 8192)
+        nothrow void initializeBuffer(in ubyte[] target, in size_t bufferSize = 8192)
         {
             const size = target.length;
 
@@ -1582,7 +1581,6 @@ struct Unpacker
      *  target     = byte buffer to deserialize
      *  bufferSize = size limit of buffer size
      */
-    @safe
     this(in ubyte[] target, in size_t bufferSize = 8192)
     {
         initializeBuffer(target, bufferSize);
@@ -1857,21 +1855,13 @@ struct Unpacker
 
 
     /// ditto
-    template unpack(Types...) if (Types.length > 1)  // needs constraint-if because "--- killed by signal 11" occurs
-    {
-        ref Unpacker unpack(ref Types objects)
-        {
-            foreach (i, T; Types)
-                unpack!(T)(objects[i]);
-
-            return this;
-        }
-    }
-    /*
-     * @@@BUG@@@ http://d.puremagic.com/issues/show_bug.cgi?id=2460
     ref Unpacker unpack(Types...)(ref Types objects) if (Types.length > 1)
-    { // do stuff }
-     */
+    {
+        foreach (i, T; Types)
+            unpack!(T)(objects[i]);
+
+        return this;
+    }
 
 
     /**
