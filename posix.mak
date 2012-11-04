@@ -43,3 +43,6 @@ unittest:
 	echo 'import msgpack; void main(){}' > $(MAIN_FILE)
 	$(DMD) $(DFLAGS) -unittest -of$(LIB) $(SRCS) -run $(MAIN_FILE)
 	rm $(MAIN_FILE)
+
+run_examples:
+	echo example/* | xargs -n 1 dmd src/msgpack.d -Isrc -run
