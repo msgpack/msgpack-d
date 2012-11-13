@@ -766,10 +766,15 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
         if (object is null)
             return packNil();
 
-        static if (__traits(compiles, { T t; t.toMsgpack(this, withFieldName_); })) {
-            object.toMsgpack(this, withFieldName_);
-        } else static if (__traits(compiles, { T t; t.toMsgpack(this); })) { // backward compatible
-            object.toMsgpack(this);
+        static if (hasMember!(T, "toMsgpack"))
+        {
+            static if (__traits(compiles, { T t; t.toMsgpack(this, withFieldName_); })) {
+                object.toMsgpack(this, withFieldName_);
+            } else static if (__traits(compiles, { T t; t.toMsgpack(this); })) { // backward compatible
+                object.toMsgpack(this);
+            } else {
+                static assert(0, "Failed to invoke 'toMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
+            }
         } else {
             // TODO: Add object serialization handler
             if (T.classinfo !is object.classinfo) {
@@ -805,10 +810,15 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
     /// ditto
     ref Packer pack(T)(auto ref T object) if (is(Unqual!T == struct))
     {
-        static if (__traits(compiles, { T t; t.toMsgpack(this, withFieldName_); })) {
-            object.toMsgpack(this, withFieldName_);
-        } else static if (__traits(compiles, { T t; t.toMsgpack(this); })) { // backward compatible
-            object.toMsgpack(this);
+        static if (hasMember!(T, "toMsgpack"))
+        {
+            static if (__traits(compiles, { T t; t.toMsgpack(this, withFieldName_); })) {
+                object.toMsgpack(this, withFieldName_);
+            } else static if (__traits(compiles, { T t; t.toMsgpack(this); })) { // backward compatible
+                object.toMsgpack(this);
+            } else {
+                static assert(0, "Failed to invoke 'toMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
+            }
         } else static if (isTuple!T) {
             beginArray(object.field.length);
             foreach (f; object.field)
@@ -2016,8 +2026,13 @@ struct Unpacker
         if (object is null)
             object = new T(args);
 
-        static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
-            object.fromMsgpack(this);
+        static if (hasMember!(T, "fromMsgpack"))
+        {
+            static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
+                object.fromMsgpack(this);
+            } else {
+                static assert(0, "Failed to invoke 'fromMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
+            }
         } else {
             // TODO: Add object deserialization handler
             if (T.classinfo !is object.classinfo) {
@@ -2047,8 +2062,13 @@ struct Unpacker
     /// ditto
     ref Unpacker unpack(T)(ref T object) if (is(Unqual!T == struct))
     {
-        static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
-            object.fromMsgpack(this);
+        static if (hasMember!(T, "fromMsgpack"))
+        {
+            static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
+                object.fromMsgpack(this);
+            } else {
+                static assert(0, "Failed to invoke 'fromMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
+            }
         } else {
             auto length = beginArray();
             if (length == 0)
@@ -2873,8 +2893,13 @@ struct Value
 
         T object = new T(args);
 
-        static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
-            object.fromMsgpack(this);
+        static if (hasMember!(T, "fromMsgpack"))
+        {
+            static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
+                object.fromMsgpack(this);
+            } else {
+                static assert(0, "Failed to invoke 'fromMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
+            }
         } else {
             alias SerializingClasses!(T) Classes;
 
@@ -2899,8 +2924,13 @@ struct Value
     {
         T obj;
 
-        static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
-            obj.fromMsgpack(this);
+        static if (hasMember!(T, "fromMsgpack"))
+        {
+            static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
+                obj.fromMsgpack(this);
+            } else {
+                static assert(0, "Failed to invoke 'fromMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
+            }
         } else {
             static if (isTuple!T) {
                 if (via.array.length != T.Types.length)
