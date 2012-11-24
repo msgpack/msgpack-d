@@ -14,6 +14,15 @@ MessagePack for D is a pure D implementation of MessagePack.
 real type is D only. Don't use real-type to communicate other languages.
 In addition, Unpacker raises exception if loss of precision occures.
 
+## Limitations
+
+* No subclass through super class reference serialization(API design phase)
+* No circular references support
+
+# Install
+
+msgpack-d is only one file. Please copy src/msgpack.d onto your project. 
+
 # Usage
 
 See example directory.
@@ -24,9 +33,9 @@ See example directory.
 
   MessagePack official site
 
-* [MessagePack's issues](http://jira.msgpack.org/browse/MSGPACK)
+* [MessagePack's issues](https://github.com/msgpack/msgpack-d/issues)
 
-  Please use 'D' component
+  Github issue
 
 * [MessagePack's Github](http://github.com/msgpack/)
 
