@@ -4524,7 +4524,11 @@ template SerializingMemberNumbers(Classes...)
  */
 template SerializingClasses(T)
 {
-    alias TypeTuple!(Reverse!(Erase!(Object, BaseClassesTuple!(T))), T) SerializingClasses;
+    // There is no information in Object type. Currently disable Object serialization.
+    static if (is(T == Object))
+        static assert(false, "Object type serialization doesn't support yet. Please define toMsgpack/fromMsgpack and use cast");
+    else
+        alias TypeTuple!(Reverse!(Erase!(Object, BaseClassesTuple!(T))), T) SerializingClasses;
 }
 
 
