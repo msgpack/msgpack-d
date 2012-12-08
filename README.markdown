@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/msgpack/msgpack-d.png)](https://travis-ci.org/msgpack/msgpack-d)
+
 # MessagePack for D
 
 MessagePack is a binary-based JSON-like serialization library.
