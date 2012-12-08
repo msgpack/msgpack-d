@@ -1,0 +1,20 @@
+language: d
+
+#compiler:
+#  - dmd
+
+install:
+  # dmd
+  - DMD_VERSION=2.060
+  - wget http://ftp.digitalmars.com/dmd.${DMD_VERSION}.zip
+  - unzip dmd.${DMD_VERSION}.zip
+
+script:
+  - DMD=./dmd2/linux/bin32/dmd MODEL=32 make -f posix.mak unittest
+
+branches:
+  only:
+    - master
+
+notifications:
+  email: true
