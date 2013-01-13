@@ -1,7 +1,5 @@
 # build mode: 32bit or 64bit
-ifeq (,$(MODEL))
-	MODEL := 64
-endif
+MODEL ?= $(shell getconf LONG_BIT)
 
 ifeq (,$(DMD))
 	DMD := dmd
