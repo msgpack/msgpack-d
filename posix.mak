@@ -11,7 +11,7 @@ DFLAGS  = -Isrc -m$(MODEL) -w -d -property
 ifeq ($(BUILD),debug)
 	DFLAGS += -g -debug
 else
-	DFLAGS += -O -release -nofloat -inline
+	DFLAGS += -O -release -nofloat -inline -noboundscheck
 endif
 
 NAMES = msgpack
@@ -43,4 +43,4 @@ unittest:
 	rm $(MAIN_FILE)
 
 run_examples:
-	echo example/* | xargs -n 1 dmd src/msgpack.d -Isrc -run
+	echo example/* | xargs -n 1 dmd src/msgpack.d $(DFLAGS) -Isrc -run
