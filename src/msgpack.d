@@ -2704,6 +2704,11 @@ struct Value
         this.type = type;
     }
 
+    @safe
+    this(typeof(null))
+    {
+        this(Type.nil);
+    }
 
     /// ditto
     @trusted
@@ -3108,7 +3113,7 @@ struct Value
 unittest
 {
     // nil
-    Value value = Value();
+    Value value = Value(null);
     Value other = Value();
 
     assert(value      == other);
