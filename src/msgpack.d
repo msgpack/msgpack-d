@@ -2772,6 +2772,13 @@ struct Value
         via.raw = value;
     }
 
+    /// This is unsafe overload because using cast internally.
+    @trusted
+    this(string value, Type type = Type.raw)
+    {
+        this(type);
+        via.raw = cast(ubyte[])value;
+    }
 
     /**
      * Converts value to $(D_PARAM T) type.
@@ -3107,6 +3114,17 @@ struct Value
 
         return via.raw == other;
     }
+
+
+    /// ditto
+    @trusted
+    bool opEquals(T : string)(in T other) const
+    {
+        if (type != Type.raw)
+            return false;
+
+        return via.raw == cast(ubyte[])other;
+    }
 }
 
 
@@ -3174,6 +3192,14 @@ unittest
     assert(value.type        == Value.Type.raw);
     assert(value.as!(string) == "Hi!");
     assert(other             == cast(ubyte[])[72, 105, 33]);
+
+    // raw with string
+    value = Value("hello");
+    other = Value("hello");
+
+    assert(value             == other);
+    assert(value.type        == Value.Type.raw);
+    assert(value.as!(string) == "hello");
 
     // array
     auto t = Value(cast(ubyte[])[72, 105, 33]);
