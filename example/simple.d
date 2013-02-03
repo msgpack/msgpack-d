@@ -12,7 +12,7 @@ import msgpack;
 
 void main()
 {
-    auto packer = packer(appender!(ubyte[]));
+    auto packer = packer(appender!(ubyte[])());
 
     packer.packArray(null, true, "Hi!", -1, [1, 2]);
 
