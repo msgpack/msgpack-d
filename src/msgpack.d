@@ -66,13 +66,13 @@ else
     import core.sys.posix.arpa.inet;
 }
 
-version(DisableReal)
+version(EnableReal)
 {
-    enum EnableReal = false;
+    enum EnableReal = true;
 }
 else
 {
-    enum EnableReal = true;
+    enum EnableReal = false;
 }
 
 static if (real.sizeof == double.sizeof) {

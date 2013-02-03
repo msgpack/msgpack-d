@@ -8,8 +8,8 @@ endif
 LIB    = libmsgpack.a
 DFLAGS = -Isrc -m$(MODEL) -w -d -property
 
-ifeq (true, $(DisableReal))
-	DFLAGS += -version=DisableReal
+ifeq (true, $(EnableReal))
+	DFLAGS += -version=EnableReal
 endif
 
 ifeq ($(BUILD),debug)
