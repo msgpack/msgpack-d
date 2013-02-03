@@ -57,13 +57,22 @@ else
 }
 
 // for Converting Endian using ntohs and ntohl;
-version (Windows)
+version(Windows)
 {
     import std.c.windows.winsock;
 }
 else
 {
     import core.sys.posix.arpa.inet;
+}
+
+version(DisableReal)
+{
+    enum EnableReal = false;
+}
+else
+{
+    enum EnableReal = true;
 }
 
 static if (real.sizeof == double.sizeof) {
@@ -597,7 +606,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
             *cast(ulong*)&store_[Offset] = temp;
             stream_.put(store_[0..Offset + ulong.sizeof]);
         } else {
-            static if (real.sizeof > double.sizeof) {
+            static if ((real.sizeof > double.sizeof) && EnableReal) {
                 store_[0]      = Format.REAL;
                 const temp     = _r(value);
                 const fraction = convertEndianTo!64(temp.fraction);
@@ -1084,18 +1093,28 @@ unittest
         }
     }
     { // fload, double
-        static if (real.sizeof == double.sizeof)
+        static if ((real.sizeof == double.sizeof) || !EnableReal)
+        {
             alias TypeTuple!(float, double, double) FloatingTypes;
+            static struct FTest { ubyte format; double value; }
+
+            static FTest[] tests = [
+                {Format.FLOAT,  float.min_normal},
+                {Format.DOUBLE, double.max},
+                {Format.DOUBLE, double.max},
+            ];
+        }
         else
+        {
             alias TypeTuple!(float, double, real) FloatingTypes;
+            static struct FTest { ubyte format; real value; }
 
-        static struct FTest { ubyte format; real value; }
-
-        static FTest[] tests = [
-            {Format.FLOAT,  float.min_normal},
-            {Format.DOUBLE, double.max},
-            {Format.REAL,   real.max},
-        ];
+            static FTest[] tests = [
+                {Format.FLOAT,  float.min_normal},
+                {Format.DOUBLE, double.max},
+                {Format.REAL,   real.max},
+            ];
+        }
 
         foreach (I, T; FloatingTypes) {
             mixin DefinePacker;
@@ -1113,11 +1132,19 @@ unittest
                 assert(memcmp(&buffer.data[1], &answer, double.sizeof) == 0);
                 break;
             default:
-                const t = _r(cast(T)tests[I].value);
-                const f = convertEndianTo!64(t.fraction);
-                const e = convertEndianTo!16(t.exponent);
-                assert(memcmp(&buffer.data[1],            &f, f.sizeof) == 0);
-                assert(memcmp(&buffer.data[1 + f.sizeof], &e, e.sizeof) == 0);
+                static if (EnableReal)
+                {
+                    const t = _r(cast(T)tests[I].value);
+                    const f = convertEndianTo!64(t.fraction);
+                    const e = convertEndianTo!16(t.exponent);
+                    assert(memcmp(&buffer.data[1],            &f, f.sizeof) == 0);
+                    assert(memcmp(&buffer.data[1 + f.sizeof], &e, e.sizeof) == 0);
+                }
+                else
+                {
+                    const answer = convertEndianTo!64(_d(cast(T)tests[I].value).i);
+                    assert(memcmp(&buffer.data[1], &answer, double.sizeof) == 0);
+                }
             }
         }
     }
@@ -1794,34 +1821,41 @@ struct Unpacker
             value  = temp.f;
             break;
         case Format.REAL:
-            // check precision loss
-            static if (is(Unqual!T == float) || is(Unqual!T == double))
-                rollback();
-
-            canRead(RealSize);
-
-            version (NonX86)
+            static if (!EnableReal)
             {
-                CustomFloat!80 temp;
-
-                const frac = load64To!ulong (read(ulong.sizeof));
-                const exp  = load16To!ushort(read(ushort.sizeof));
-
-                temp.significand = frac;
-                temp.exponent    = exp & 0x7fff;
-                temp.sign        = exp & 0x8000 ? true : false;
-
-                // NOTE: temp.get!real is inf on non-x86 when deserialized value is larger than double.max.
-                value = temp.get!real;
+                rollback();
             }
             else
             {
-                _r temp;
+                // check precision loss
+                static if (is(Unqual!T == float) || is(Unqual!T == double))
+                    rollback();
 
-                temp.fraction = load64To!(typeof(temp.fraction))(read(temp.fraction.sizeof));
-                temp.exponent = load16To!(typeof(temp.exponent))(read(temp.exponent.sizeof));
+                canRead(RealSize);
 
-                value = temp.f;
+                version (NonX86)
+                {
+                    CustomFloat!80 temp;
+
+                    const frac = load64To!ulong (read(ulong.sizeof));
+                    const exp  = load16To!ushort(read(ushort.sizeof));
+
+                    temp.significand = frac;
+                    temp.exponent    = exp & 0x7fff;
+                    temp.sign        = exp & 0x8000 ? true : false;
+
+                    // NOTE: temp.get!real is inf on non-x86 when deserialized value is larger than double.max.
+                    value = temp.get!real;
+                }
+                else
+                {
+                    _r temp;
+
+                    temp.fraction = load64To!(typeof(temp.fraction))(read(temp.fraction.sizeof));
+                    temp.exponent = load16To!(typeof(temp.exponent))(read(temp.exponent.sizeof));
+
+                    value = temp.f;
+                }
             }
 
             break;
@@ -2420,10 +2454,10 @@ unittest
     { // floating point
         mixin DefinePacker;
 
-        static if (real.sizeof == double.sizeof)
+        static if (real.sizeof == double.sizeof || !EnableReal)
         {
             Tuple!(float, double, double) result;
-            Tuple!(float, double, double) test = tuple(cast(float)float.min_normal, cast(double)double.max, cast(real)real.min_normal);
+            Tuple!(float, double, double) test = tuple(cast(float)float.min_normal, cast(double)double.max, cast(real)double.min_normal);
         }
         else
         {

@@ -5,8 +5,12 @@ ifeq (,$(DMD))
 	DMD := dmd
 endif
 
-LIB     = libmsgpack.a
-DFLAGS  = -Isrc -m$(MODEL) -w -d -property
+LIB    = libmsgpack.a
+DFLAGS = -Isrc -m$(MODEL) -w -d -property
+
+ifeq (true, $(DisableReal))
+	DFLAGS += -version=DisableReal
+endif
 
 ifeq ($(BUILD),debug)
 	DFLAGS += -g -debug
