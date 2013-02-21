@@ -668,11 +668,43 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
         /*
          * Serializes raw type-information to stream.
          */
+        void beginStr(in size_t length)
+        {
+            if (length < 16) {
+                const ubyte temp = Format.STR | cast(ubyte)length;
+                stream_.put(take8from(temp));
+            } else if (length < 32) {
+                const temp = convertEndianTo!8(length);
+
+                store_[0] = Format.STR8;
+                *cast(byte*)&store_[Offset] = temp;
+                stream_.put(store_[0..Offset + ubyte.sizeof]);
+            } else if (length < 65536) {
+                const temp = convertEndianTo!16(length);
+
+                store_[0] = Format.STR16;
+                *cast(ushort*)&store_[Offset] = temp;
+                stream_.put(store_[0..Offset + ushort.sizeof]);
+            } else {
+                const temp = convertEndianTo!32(length);
+
+                store_[0] = Format.STR32;
+                *cast(uint*)&store_[Offset] = temp;
+                stream_.put(store_[0..Offset + uint.sizeof]);
+            }
+        }
+
         void beginRaw(in size_t length)
         {
-            if (length < 32) {
+            if (15 < length && length < 32) {
                 const ubyte temp = Format.RAW | cast(ubyte)length;
                 stream_.put(take8from(temp));
+            } else if ((0 < length && length < 16) && (31 < length && length < 255)) {
+                const temp = convertEndianTo!8(length);
+
+                store_[0] = Format.RAW8;
+                *cast(ubyte*)&store_[Offset] = temp;
+                stream_.put(store_[0..Offset + ubyte.sizeof]);
             } else if (length < 65536) {
                 const temp = convertEndianTo!16(length);
 
@@ -697,6 +729,8 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
             beginRaw(raw.length);
             stream_.put(raw);
+        } else static if (isSomeChar!(U)) {
+
         } else {
             beginArray(array.length);
             foreach (elem; array)
@@ -3498,6 +3532,11 @@ struct StreamingUnpacker
         INT64,
 
         // Container (== header & 0x01)
+        STR,
+        STR8,
+        STR16,
+        STR32,
+        RAW8,
         RAW16 = 0x1a,
         RAW32,
         ARRAY16,
@@ -3680,7 +3719,7 @@ struct StreamingUnpacker
                     trail = header & 0x1f;
                     if (trail == 0)
                         goto Lraw;
-                    state = State.RAW;
+                    state = (0xa0 <= header && header <= 0xbf) ? State.STR : State.RAW;
                     cur++;
                     goto Lstart;
                 } else if (0x90 <= header && header <= 0x9f) {  // fix array
@@ -3714,8 +3753,12 @@ struct StreamingUnpacker
                     case Format.ARRAY32:
                     case Format.MAP16:
                     case Format.MAP32:
+                    case Format.RAW8:
                     case Format.RAW16:
                     case Format.RAW32:
+                    case Format.STR8:
+                    case Format.STR16:
+                    case Format.STR32:
                         trail = 2 << (header & 0x01);  // computes container size
                         state = cast(State)(header & 0x1f);
                         break;
@@ -3807,18 +3850,22 @@ struct StreamingUnpacker
                 case State.INT64:
                     callbackInt(obj, load64To!long(buffer_[base..base + trail]));
                     goto Lpush;
-                case State.RAW: Lraw:
+                case State.RAW, State.STR: Lraw:
                     hasRaw_ = true;
                     callbackRaw(obj, buffer_[base..base + trail]);
                     goto Lpush;
-                case State.RAW16:
+                case State.RAW8, State.STR8:
+                    hasRaw_ = true;
+                    callbackRaw(obj, buffer_[base..base + trail]);
+                    goto Lpush;
+                case State.RAW16, State.STR16:
                     trail = load16To!size_t(buffer_[base..base + trail]);
                     if (trail == 0)
                         goto Lraw;
                     state = State.RAW;
                     cur++;
                     goto Lstart;
-                case State.RAW32:
+                case State.RAW32, State.STR32:
                     trail = load32To!size_t(buffer_[base..base + trail]);
                     if (trail == 0)
                         goto Lraw;
@@ -4478,9 +4525,16 @@ enum Format : ubyte
     DOUBLE = 0xcb,  // double
 
     // raw byte
-    RAW   = 0xa0,
+    RAW   = 0xb0,
+    RAW8  = 0xd9,
     RAW16 = 0xda,
     RAW32 = 0xdb,
+
+    // string
+    STR   = 0xa0,
+    STR8  = 0xd6,
+    STR16 = 0xd7,
+    STR32 = 0xd8,
 
     // array
     ARRAY   = 0x90,
@@ -4627,6 +4681,13 @@ version (LittleEndian)
      *  the converted value.
      */
     @trusted
+    ubyte convertEndianTo(size_t Bit, T)(in T value) if (Bit == 8)
+    {
+        return cast(ubyte)value;
+    }
+
+    //
+    @trusted
     ushort convertEndianTo(size_t Bit, T)(in T value) if (Bit == 16)
     {
         return ntohs(cast(ushort)value);
@@ -4692,6 +4753,13 @@ else
     /*
      * Comapatible for LittleEndian environment.
      */
+    @safe
+    ubyte convertEndianTo(size_t Bit, T)(in T value) if (Bit == 8)
+    {
+        return cast(ubyte)value;
+    }
+
+    ///
     @safe
     ushort convertEndianTo(size_t Bit, T)(in T value) if (Bit == 16)
     {
