@@ -23,11 +23,43 @@ In addition, Unpacker raises exception if loss of precision occures.
 
 # Install
 
-msgpack-d is only one file. Please copy src/msgpack.d onto your project. 
+msgpack-d is only one file. Please copy src/msgpack.d onto your project.
 
 # Usage
 
-See example directory.
+msgpack-d is very simple to use:
+
+```D
+import std.file;
+import msgpack;
+
+struct S { int x; float y; string z; }
+
+void main()
+{
+    S input = S(10, 25.5, "message");
+
+    // serialize data
+    ubyte[] inData = msgpack.pack(input);
+
+    // write data to a file
+    write("file.dat", inData);
+
+    // read data from file
+    ubyte[] outData = cast(ubyte[])read("file.dat");
+
+    // unserialize data
+    S target;
+    msgpack.unpack(outData, target);
+
+    // verify data is the same
+    assert(target.x == input.x);
+    assert(target.y == input.y);
+    assert(target.z == input.z);
+}
+```
+
+See the example directory for more samples.
 
 # Link
 
