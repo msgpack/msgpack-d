@@ -661,7 +661,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer pack(T)(in T array) if (isArray!T)
+    ref Packer pack(T)(in T array) if (isArray!T && !is(Unqual!T == void[0]))
     {
         alias typeof(T.init[0]) U;
 
@@ -706,6 +706,11 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
         return this;
     }
 
+    /// ditto
+    ref Packer pack(T)(in T array) if (isArray!T && is(Unqual!T == void[0]))
+    {
+        return this;
+    }
 
     /// ditto
     ref Packer pack(T)(in T array) if (isAssociativeArray!T)
@@ -1931,7 +1936,7 @@ struct Unpacker
      *  UnpackException when doesn't read from buffer or precision loss occurs and
      *  MessagePackException when $(D_PARAM T) type doesn't match serialized type.
      */
-    ref Unpacker unpack(T)(ref T array) if (isArray!T)
+    ref Unpacker unpack(T)(ref T array) if (isArray!T && !is(Unqual!T == void[0]))
     {
         alias typeof(T.init[0]) U;
 
@@ -2011,6 +2016,11 @@ struct Unpacker
         return this;
     }
 
+    /// ditto
+    ref Unpacker unpack(T)(ref T array) if (isArray!T && is(Unqual!T == void[0]))
+    {
+        return this;
+    }
 
     /// ditto
     ref Unpacker unpack(T)(ref T array) if (isAssociativeArray!T)
@@ -2870,7 +2880,6 @@ struct Value
         return cast(T)as!(OriginalType!T);
     }
 
-
     /// ditto
     @property @trusted
     T as(T)() if (isArray!T)
@@ -2898,6 +2907,12 @@ struct Value
         }
     }
 
+    /// ditto
+    @property @trusted
+    T as(T)() if (is(Unqual!T == void[0]))
+    {
+        return [];
+    }
 
     /// ditto
     @property @trusted
@@ -3328,6 +3343,14 @@ unittest
      * static struct NonMessagePackable {}
      * auto nonMessagePackable = value.as!(NonMessagePackable);
      */
+
+    // value-less hash (aka set)
+    void[0][int] hash;
+    hash[1] = [];
+    ubyte[] data = pack(hash);
+    void[0][int] hash2;
+    unpack(data, hash2);
+    assert(1 in hash2);
 }
 
 
