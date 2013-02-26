@@ -174,7 +174,7 @@ struct RefBuffer
 
 
     /**
-     * Writes the argument to buffer and stores the reference of writed content 
+     * Writes the argument to buffer and stores the reference of writed content
      * if the argument size is smaller than threshold,
      * otherwise stores the reference of argument directly.
      *
@@ -661,7 +661,8 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer pack(T)(in T array) if (isArray!T)
+    ref Packer pack(T)(in T array)
+        if (isArray!T && !is(Unqual!T == void[0]))
     {
         alias typeof(T.init[0]) U;
 
@@ -706,6 +707,12 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
         return this;
     }
 
+    /// ditto
+    ref Packer pack(T)(in T array)
+        if (isArray!T && is(Unqual!T == void[0]))
+    {
+        return this;
+    }
 
     /// ditto
     ref Packer pack(T)(in T array) if (isAssociativeArray!T)
@@ -903,7 +910,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
      * packer.beginArray(3).pack(true, 1);  // -> [true, 1,
      *
      * // other operation
-     * 
+     *
      * packer.pack("Hi!");                  // -> [true, 1, "Hi!"]
      * -----
      *
@@ -987,7 +994,7 @@ Packer!(Stream) packer(Stream)(Stream stream, bool withFieldName = false)
 }
 
 
-version (unittest) 
+version (unittest)
 {
     alias Appender!(ubyte[]) SimpleBuffer;
     alias packer packerBuilder;  // Avoid issue: http://d.puremagic.com/issues/show_bug.cgi?id=9169
@@ -1020,7 +1027,7 @@ unittest
         enum : ulong { A = ubyte.max, B = ushort.max, C = uint.max, D = ulong.max }
 
         static UTest[][] tests = [
-            [{Format.UINT8, A}], 
+            [{Format.UINT8, A}],
             [{Format.UINT8, A}, {Format.UINT16, B}],
             [{Format.UINT8, A}, {Format.UINT16, B}, {Format.UINT32, C}],
             [{Format.UINT8, A}, {Format.UINT16, B}, {Format.UINT32, C}, {Format.UINT64, D}],
@@ -1059,7 +1066,7 @@ unittest
         enum : long { A = byte.min, B = short.min, C = int.min, D = long.min }
 
         static STest[][] tests = [
-            [{Format.INT8, A}], 
+            [{Format.INT8, A}],
             [{Format.INT8, A}, {Format.INT16, B}],
             [{Format.INT8, A}, {Format.INT16, B}, {Format.INT32, C}],
             [{Format.INT8, A}, {Format.INT16, B}, {Format.INT32, C}, {Format.INT64, D}],
@@ -1150,8 +1157,8 @@ unittest
     }
     { // pointer
         static struct PTest
-        { 
-            ubyte format; 
+        {
+            ubyte format;
 
             union
             {
@@ -1215,7 +1222,7 @@ unittest
             auto test = tests[I];
 
             foreach (i, T; TypeTuple!(ubyte, ushort, uint)) {
-                mixin DefinePacker; 
+                mixin DefinePacker;
                 mixin("packer.begin" ~ Name ~ "(i ? test[i].value : A);");
 
                 assert(buffer.data[0] == test[i].format);
@@ -1346,7 +1353,7 @@ unittest
 class UnpackException : MessagePackException
 {
     this(string message)
-    { 
+    {
         super(message);
     }
 }
@@ -1450,7 +1457,7 @@ version (D_Ddoc)
     }
 }
 else
-{ 
+{
     private mixin template InternalBuffer()
     {
       private:
@@ -1571,7 +1578,7 @@ else
         {
             const size = target.length;
 
-            buffer_ = new ubyte[](size > bufferSize ? size : bufferSize); 
+            buffer_ = new ubyte[](size > bufferSize ? size : bufferSize);
             used_   = size;
             buffer_[0..size] = target;
         }
@@ -1648,7 +1655,7 @@ struct Unpacker
      * unpacker.unpack(b)  // b is deserialized value or
      *                     // assigns null if deserialized value is nil
      * -----
-     * 
+     *
      * Params:
      *  value = the reference of value to assign.
      *
@@ -1931,7 +1938,8 @@ struct Unpacker
      *  UnpackException when doesn't read from buffer or precision loss occurs and
      *  MessagePackException when $(D_PARAM T) type doesn't match serialized type.
      */
-    ref Unpacker unpack(T)(ref T array) if (isArray!T)
+    ref Unpacker unpack(T)(ref T array)
+        if (isArray!T && !is(Unqual!T == void[0]))
     {
         alias typeof(T.init[0]) U;
 
@@ -2011,6 +2019,13 @@ struct Unpacker
         return this;
     }
 
+
+    /// ditto
+    ref Unpacker unpack(T)(ref T array)
+        if (isArray!T && is(Unqual!T == void[0]))
+    {
+        return this;
+    }
 
     /// ditto
     ref Unpacker unpack(T)(ref T array) if (isAssociativeArray!T)
@@ -2528,7 +2543,7 @@ unittest
 
                 void toMsgpack(P)(ref P p) const { p.packArray(num); }
                 void fromMsgpack(ref Unpacker u)
-                { 
+                {
                     assert(u.beginArray() == 1);
                     u.unpack(num);
                 }
@@ -2721,7 +2736,7 @@ struct Value
     }
 
 
-    Type type;  /// represents value type 
+    Type type;  /// represents value type
     Via  via;   /// represents real value
 
 
@@ -2920,6 +2935,12 @@ struct Value
         return map;
     }
 
+    /// ditto
+    @property @trusted
+    T as(T)() if (is(Unqual!T== void[0]))
+    {
+        return [];
+    }
 
     /**
      * Converts to $(D_PARAM T) type.
@@ -3323,11 +3344,19 @@ unittest
     assert(tuple.field[1] == 1u);
     assert(tuple.field[2] == "Hi!");
 
-    /* 
+    /*
      * non-MessagePackable object is stopped by static assert
      * static struct NonMessagePackable {}
      * auto nonMessagePackable = value.as!(NonMessagePackable);
      */
+
+    // value-less hash (aka set)
+    void[0][int] hash;
+    hash[1] = [];
+    ubyte[] data = pack(hash);
+    void[0][int] hash2;
+    unpack(data, hash2);
+    assert(1 in hash2);
 }
 
 
@@ -3470,7 +3499,7 @@ unittest
  *         // do stuff (obj is a Value)
  *     }
  * }
- * 
+ *
  * if (unpacker.size)
  *     throw new Exception("Message is too large");
  * -----
@@ -3746,7 +3775,7 @@ struct StreamingUnpacker
                 case State.FLOAT:
                     _f temp;
 
-                    temp.i = load32To!uint(buffer_[base..base + trail]);                    
+                    temp.i = load32To!uint(buffer_[base..base + trail]);
                     callbackFloat(obj, temp.f);
                     goto Lpush;
                 case State.DOUBLE:
