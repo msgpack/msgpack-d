@@ -5,12 +5,12 @@ language: d
 
 install:
   # dmd
-  - DMD_VERSION=2.061
-  - wget http://downloads.dlang.org.s3-website-us-east-1.amazonaws.com/releases/2013/dmd.${DMD_VERSION}.zip
+  - DMD_VERSION=2.062
+  - wget http://ftp.digitalmars.com/dmd.${DMD_VERSION}.zip
   - unzip dmd.${DMD_VERSION}.zip
 
 script:
-  - DMD=./dmd2/linux/bin32/dmd MODEL=32 make -f posix.mak unittest
+  - DMD=./dmd2/linux/bin64/dmd MODEL=64 make -f posix.mak unittest
 
 branches:
   only:
