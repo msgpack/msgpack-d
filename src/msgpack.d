@@ -1729,8 +1729,10 @@ struct Unpacker
         canRead(Offset, 0);
         const header = read();
 
-        if ((0x00 <= header && header <= 0x7f) || (0xe0 <= header && header <= 0xff)) {
+        if (0x00 <= header && header <= 0x7f) {
             value = cast(T)header;
+        } else if (0xe0 <= header && header <= 0xff) {
+            value = -(cast(T)-header);
         } else {
             switch (header) {
             case Format.UINT8:
@@ -4237,6 +4239,20 @@ unittest
         test.field[1] = "Hey!";
         unpack(pack(test.field[0], test.field[1]), result.field[0], result.field[1]);
         assert(result == test);
+    }
+}
+
+
+unittest
+{
+    // unittest for https://github.com/msgpack/msgpack-d/issues/8
+    foreach (Type; TypeTuple!(byte, short, int, long)) {
+        foreach (i; [-33, -20, -1, 0, 1, 20, 33]) {
+            Type a = cast(Type)i;
+            Type b;
+            unpack(pack(a), b);
+            assert(a == b);
+        }
     }
 }
 
