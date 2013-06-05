@@ -245,7 +245,7 @@ struct RefBuffer
         const base = chunks_[index_].used;                     // start index
         auto  data = chunks_[index_].data[base..base + size];  // chunk to write
 
-        data[] = value;
+        data[] = value[];
         chunks_[index_].used += size;
 
         // Optimization for avoiding iovec allocation.
@@ -1511,7 +1511,7 @@ else
                     unparsed  = area.overlap(unparsed) ? unparsed.dup : unparsed;
                 }
 
-                buffer_[0..unparsedSize] = unparsed;
+                buffer_[0..unparsedSize] = unparsed[];
                 used_   = unparsedSize;
                 offset_ = 0;
             }
@@ -1522,7 +1522,7 @@ else
             if (buffer_.length - used_ < size)
                 expandBuffer(size);
 
-            buffer_[used_..used_ + size] = target;
+            buffer_[used_..used_ + size] = target[];
             used_ += size;
         }
 
@@ -1573,7 +1573,7 @@ else
 
             buffer_ = new ubyte[](size > bufferSize ? size : bufferSize); 
             used_   = size;
-            buffer_[0..size] = target;
+            buffer_[0..size] = target[];
         }
     }
 }
@@ -1970,8 +1970,13 @@ struct Unpacker
         }
 
 
-        if (checkNil())
-            return unpackNil(array);
+        if (checkNil()) {
+            static if (isStaticArray!T) {
+                onInvalidType();
+            } else {
+                return unpackNil(array);
+            }
+        }
 
         // Raw bytes
         static if (isByte!U || isSomeChar!U) {
@@ -1987,7 +1992,7 @@ struct Unpacker
 
             canRead(length, offset + Offset);
             static if (isStaticArray!T) {
-                array = (cast(U[])read(length))[0 .. T.length];
+                array[] = (cast(U[])read(length))[0 .. T.length];
             } else {
                 array = cast(T)read(length);
             }
