@@ -4696,14 +4696,10 @@ template AsteriskOf(T)
  */
 template SerializingMemberNumbers(Classes...)
 {
-    static if (Classes.length == 0) {
+    static if (Classes.length == 0)
         enum SerializingMemberNumbers = 0;
-    } else {
-        //pragma(msg, Filter!(isPackedField, Classes[0].tupleof));
-        //pragma(msg, isPackedField!(Classes[0].tupleof[0]));
-        //enum SerializingMemberNumbers = Classes[0].tupleof.length + SerializingMemberNumbers!(Classes[1..$]);
+    else
         enum SerializingMemberNumbers = Filter!(isPackedField, Classes[0].tupleof).length + SerializingMemberNumbers!(Classes[1..$]);
-    }
 }
 
 /**
