@@ -4,9 +4,6 @@
  * Attribute usage
  */
 
-import std.array;
-import std.stdio;
-
 import msgpack;
 
 struct Hoge
