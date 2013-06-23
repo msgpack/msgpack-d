@@ -296,6 +296,28 @@ class MessagePackException : Exception
 }
 
 
+/**
+ * Attribute for specifying non pack/unpack field.
+ * This is an alternative approach of MessagePackable mixin.
+ *
+ * Example:
+ * -----
+ * struct S
+ * {
+ *     int num;
+ *     // Packer/Unpacker ignores this field;
+ *     @nonPacked string str;
+ * }
+ * -----
+ */
+struct nonPacked {}
+
+template isPackedField(alias field)
+{
+    enum isPackedField = staticIndexOf!(nonPacked, __traits(getAttributes, field)) == -1;
+}
+
+
 // Serializing routines
 
 
@@ -802,12 +824,16 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
                 Class obj = cast(Class)object;
                 if (withFieldName_) {
                     foreach (i, f ; obj.tupleof) {
-                        pack(getFieldName!(Class, i));
-                        pack(f);
+                        if (isPackedField!(Class.tupleof[i])) {
+                            pack(getFieldName!(Class, i));
+                            pack(f);
+                        }
                     }
                 } else {
-                    foreach (f ; obj.tupleof)
-                        pack(f);
+                    foreach (i, f ; obj.tupleof) {
+                        if (isPackedField!(Class.tupleof[i]))
+                            pack(f);
+                    }
                 }
             }
         }
@@ -833,7 +859,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
             foreach (f; object.field)
                 pack(f);
         } else {  // simple struct
-            immutable memberNum = object.tupleof.length;
+            immutable memberNum = SerializingMemberNumbers!(T);
             if (withFieldName_)
                 beginMap(memberNum);
             else
@@ -841,12 +867,16 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
             if (withFieldName_) {
                 foreach (i, f; object.tupleof) {
-                    pack(getFieldName!(T, i));
-                    pack(f);
+                    if (isPackedField!(T.tupleof[i])) {
+                        pack(getFieldName!(T, i));
+                        pack(f);
+                    }
                 }
             } else {
-                foreach (f; object.tupleof)
-                    pack(f);
+                foreach (i, f; object.tupleof) {
+                    if (isPackedField!(T.tupleof[i]))
+                        pack(f);
+                }
             }
         }
 
@@ -1290,13 +1320,28 @@ unittest
                 uint num = uint.max;
             }
 
-            mixin DefinePacker; Simple test;
+            static struct SimpleWithNonPacked1
+            {
+                uint num = uint.max;
+                @nonPacked string str = "ignored";
+            }
 
-            packer.pack(test);
+            static struct SimpleWithNonPacked2
+            {
+                @nonPacked string str = "ignored";
+                uint num = uint.max;
+            }
 
-            assert(buffer.data[0] == (Format.ARRAY | 1));
-            assert(buffer.data[1] ==  Format.UINT32);
-            assert(memcmp(&buffer.data[2], &test.num, uint.sizeof) == 0);
+            foreach (Type; TypeTuple!(Simple, SimpleWithNonPacked1, SimpleWithNonPacked2)) {
+                mixin DefinePacker;
+
+                Type test;
+                packer.pack(test);
+
+                assert(buffer.data[0] == (Format.ARRAY | 1));
+                assert(buffer.data[1] ==  Format.UINT32);
+                assert(memcmp(&buffer.data[2], &test.num, uint.sizeof) == 0);
+            }
         }
 
         static class SimpleA
@@ -1314,16 +1359,31 @@ unittest
             uint num = uint.max;
         }
 
+        static class SimpleCWithNonPacked1 : SimpleB
+        {
+            uint num = uint.max;
+            @nonPacked string str = "ignored";
+        }
+
+        static class SimpleCWithNonPacked2 : SimpleB
+        {
+            @nonPacked string str = "ignored";
+            uint num = uint.max;
+        }
+
         {  // from derived class
-            mixin DefinePacker; SimpleC test = new SimpleC();
+            foreach (Type; TypeTuple!(SimpleC, SimpleCWithNonPacked1, SimpleCWithNonPacked2)) {
+                mixin DefinePacker;
 
-            packer.pack(test);
+                Type test = new Type();
+                packer.pack(test);
 
-            assert(buffer.data[0] == (Format.ARRAY | 3));
-            assert(buffer.data[1] ==  Format.TRUE);
-            assert(buffer.data[2] ==  100);
-            assert(buffer.data[3] ==  Format.UINT32);
-            assert(memcmp(&buffer.data[4], &test.num, uint.sizeof) == 0);
+                assert(buffer.data[0] == (Format.ARRAY | 3));
+                assert(buffer.data[1] ==  Format.TRUE);
+                assert(buffer.data[2] ==  100);
+                assert(buffer.data[3] ==  Format.UINT32);
+                assert(memcmp(&buffer.data[4], &test.num, uint.sizeof) == 0);
+            }
         }
         {  // from base class
             mixin DefinePacker; SimpleB test = new SimpleC();
@@ -2092,8 +2152,10 @@ struct Unpacker
 
             foreach (Class; Classes) {
                 Class obj = cast(Class)object;
-                foreach (i, member; obj.tupleof)
-                    unpack(obj.tupleof[i]);
+                foreach (i, member; obj.tupleof) {
+                    if (isPackedField!(Class.tupleof[i]))
+                        unpack(obj.tupleof[i]);
+                }
             }
         }
 
@@ -2123,11 +2185,14 @@ struct Unpacker
                 foreach (i, Type; T.Types)
                     unpack(object.field[i]);
             } else {  // simple struct
-                if (length != object.tupleof.length)
+                //if (length != object.tupleof.length)
+                if (length != SerializingMemberNumbers!(T))
                     rollback(calculateSize(length));
 
-                foreach (i, member; object.tupleof)
-                    unpack(object.tupleof[i]);
+                foreach (i, member; object.tupleof) {
+                    if (isPackedField!(T.tupleof[i]))
+                        unpack(object.tupleof[i]);
+                }
             }
         }
 
@@ -2580,16 +2645,28 @@ unittest
             static struct Simple
             {
                 uint num;
+                @nonPacked string str;
             }
 
-            mixin DefinePacker; Simple result, test = Simple(uint.max);
+            static struct Simple2
+            {
+                @nonPacked string str;
+                uint num;
+            }
 
-            packer.pack(test);
+            foreach (Type; TypeTuple!(Simple, Simple2)) {
+                mixin DefinePacker;
+                Type result, test;
+                test.num = uint.max;
+                test.str = "ignored";
 
-            auto unpacker = Unpacker(packer.stream.data);
-            unpacker.unpack(result);
+                packer.pack(test);
+                auto unpacker = Unpacker(packer.stream.data);
+                unpacker.unpack(result);
 
-            assert(test.num == result.num);
+                assert(test.num == result.num);
+                assert(test.str != result.str);
+            }
         }
 
         static class SimpleA
@@ -2605,23 +2682,33 @@ unittest
         static class SimpleC : SimpleB
         {
             uint num = uint.max;
+            @nonPacked string str;
+        }
+
+        static class SimpleC2 : SimpleB
+        {
+            @nonPacked string str;
+            uint num = uint.max;
         }
 
         { // from derived class
-            mixin DefinePacker; SimpleC result, test = new SimpleC();
+            foreach (Type; TypeTuple!(SimpleC, SimpleC2)) {
+                mixin DefinePacker;
+                Type result, test = new Type();
+                test.flag = false;
+                test.type = 99;
+                test.num  = uint.max / 2;
+                test.str  = "ignored";
 
-            test.flag = false;
-            test.type = 99;
-            test.num  = uint.max / 2;
+                packer.pack(test);
+                auto unpacker = Unpacker(packer.stream.data);
+                unpacker.unpack(result);
 
-            packer.pack(test);
-
-            auto unpacker = Unpacker(packer.stream.data);
-            unpacker.unpack(result);
-
-            assert(test.flag == result.flag);
-            assert(test.type == result.type);
-            assert(test.num  == result.num);
+                assert(test.flag == result.flag);
+                assert(test.type == result.type);
+                assert(test.num  == result.num);
+                assert(test.str  != result.str);
+            }
         }
         { // from base class
             mixin DefinePacker; SimpleC test = new SimpleC();
@@ -2967,8 +3054,10 @@ struct Value
             size_t offset;
             foreach (Class; Classes) {
                 Class obj = cast(Class)object;
-                foreach (i, member; obj.tupleof)
-                    obj.tupleof[i] = via.array[offset++].as!(typeof(member));
+                foreach (i, member; obj.tupleof) {
+                    if (isPackedField!(Class.tupleof[i]))
+                        obj.tupleof[i] = via.array[offset++].as!(typeof(member));
+                }
             }
         }
 
@@ -2997,11 +3086,14 @@ struct Value
                 foreach (i, Type; T.Types)
                     obj.field[i] = via.array[i].as!(Type);
             } else {  // simple struct
-                if (via.array.length != obj.tupleof.length)
+                if (via.array.length != SerializingMemberNumbers!T)
                     throw new MessagePackException("The number of deserialized struct member is mismatched");
 
-                foreach (i, member; obj.tupleof)
-                    obj.tupleof[i] = via.array[i].as!(typeof(member));
+                size_t offset;
+                foreach (i, member; obj.tupleof) {
+                    if (isPackedField!(T.tupleof[i]))
+                        obj.tupleof[i] = via.array[offset++].as!(typeof(member));
+                }
             }
         }
 
@@ -3279,11 +3371,13 @@ unittest
     // struct
     static struct Simple
     {
+        @nonPacked int era;
         double num;
         string msg;
     }
 
     Simple simple = value.as!(Simple);
+    assert(simple.era == int.init);
     assert(simple.num == 0.5f);
     assert(simple.msg == "Hi!");
 
@@ -3312,6 +3406,7 @@ unittest
 
     static class SimpleC : SimpleB
     {
+        @nonPacked string str;
         uint num = uint.max;
     }
 
@@ -3321,6 +3416,7 @@ unittest
     assert(sc.flag == false);
     assert(sc.type == 99);
     assert(sc.num  == uint.max / 2);
+    assert(sc.str.empty);
 
     // std.typecons.Tuple
     value = Value([Value(true), Value(1UL), Value(cast(ubyte[])"Hi!")]);
@@ -4595,18 +4691,20 @@ template AsteriskOf(T)
         enum AsteriskOf = "";
 }
 
-
 /**
  * Get the number of member to serialize.
  */
 template SerializingMemberNumbers(Classes...)
 {
-    static if (Classes.length == 0)
+    static if (Classes.length == 0) {
         enum SerializingMemberNumbers = 0;
-    else
-        enum SerializingMemberNumbers = Classes[0].tupleof.length + SerializingMemberNumbers!(Classes[1..$]);
+    } else {
+        //pragma(msg, Filter!(isPackedField, Classes[0].tupleof));
+        //pragma(msg, isPackedField!(Classes[0].tupleof[0]));
+        //enum SerializingMemberNumbers = Classes[0].tupleof.length + SerializingMemberNumbers!(Classes[1..$]);
+        enum SerializingMemberNumbers = Filter!(isPackedField, Classes[0].tupleof).length + SerializingMemberNumbers!(Classes[1..$]);
+    }
 }
-
 
 /**
  * Get derived classes with serialization-order
