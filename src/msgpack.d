@@ -3805,16 +3805,9 @@ struct StreamingUnpacker
                     goto Lagain;
                 } else {
                     switch (header) {
-                    case Format.UINT8:
-                    case Format.UINT16:
-                    case Format.UINT32:
-                    case Format.UINT64:
-                    case Format.INT8:
-                    case Format.INT16:
-                    case Format.INT32:
-                    case Format.INT64:
-                    case Format.FLOAT:
-                    case Format.DOUBLE:
+                    case Format.UINT8, Format.UINT16, Format.UINT32, Format.UINT64,
+                         Format.INT8, Format.INT16, Format.INT32, Format.INT64,
+                         Format.FLOAT, Format.DOUBLE:
                         trail = 1 << (header & 0x03); // computes object size
                         state = cast(State)(header & 0x1f);
                         break;
@@ -3822,10 +3815,8 @@ struct StreamingUnpacker
                         trail = RealSize;
                         state = State.REAL;
                         break;
-                    case Format.ARRAY16:
-                    case Format.ARRAY32:
-                    case Format.MAP16:
-                    case Format.MAP32:
+                    case Format.ARRAY16, Format.ARRAY32,
+                         Format.MAP16, Format.MAP32:
                         trail = 2 << (header & 0x01);  // computes container size
                         state = cast(State)(header & 0x1f);
                         break;
@@ -3836,9 +3827,7 @@ struct StreamingUnpacker
                         trail = 1 << ((header & 0x03) - 1);  // computes container size
                         state = cast(State)(header & 0x1f);
                         break;
-                    case Format.BIN8:
-                    case Format.BIN16:
-                    case Format.BIN32:
+                    case Format.BIN8, Format.BIN16, Format.BIN32:
                         trail = 1 << (header & 0x03);  // computes container size
                         state = cast(State)(header & 0x1f);
                         break;
