@@ -2011,11 +2011,15 @@ struct Unpacker
                 length = header & 0x1f;
             } else {
                 switch (header) {
-                case Format.RAW16:
+                case Format.BIN8, Format.STR8:
+                    canRead(ubyte.sizeof);
+                    length = read();
+                    break;
+                case Format.BIN16, Format.RAW16:
                     canRead(ushort.sizeof);
                     length = load16To!size_t(read(ushort.sizeof));
                     break;
-                case Format.RAW32:
+                case Format.BIN32, Format.RAW32:
                     canRead(uint.sizeof);
                     length = load32To!size_t(read(uint.sizeof));
                     break;
@@ -3588,6 +3592,10 @@ struct StreamingUnpacker
     {
         HEADER = 0x00,
 
+        BIN8 = 0x04,
+        BIN16,
+        BIN32,
+
         // Floating point, Unsigned, Signed interger (== header & 0x03)
         FLOAT = 0x0a,
         DOUBLE,
@@ -3601,6 +3609,7 @@ struct StreamingUnpacker
         INT64,
 
         // Container (== header & 0x01)
+        STR8 = 0x19,
         RAW16 = 0x1a,
         RAW32,
         ARRAY16,
@@ -3817,9 +3826,20 @@ struct StreamingUnpacker
                     case Format.ARRAY32:
                     case Format.MAP16:
                     case Format.MAP32:
-                    case Format.RAW16:
-                    case Format.RAW32:
                         trail = 2 << (header & 0x01);  // computes container size
+                        state = cast(State)(header & 0x1f);
+                        break;
+                    // raw will become str format in new spec
+                    case Format.STR8:
+                    case Format.RAW16: // will be STR16
+                    case Format.RAW32: // will be STR32
+                        trail = 1 << ((header & 0x03) - 1);  // computes container size
+                        state = cast(State)(header & 0x1f);
+                        break;
+                    case Format.BIN8:
+                    case Format.BIN16:
+                    case Format.BIN32:
+                        trail = 1 << (header & 0x03);  // computes container size
                         state = cast(State)(header & 0x1f);
                         break;
                     case Format.NIL:
@@ -3914,14 +3934,21 @@ struct StreamingUnpacker
                     hasRaw_ = true;
                     callbackRaw(obj, buffer_[base..base + trail]);
                     goto Lpush;
-                case State.RAW16:
+                case State.STR8, State.BIN8:
+                    trail = buffer_[base];
+                    if (trail == 0)
+                        goto Lraw;
+                    state = State.RAW;
+                    cur++;
+                    goto Lstart;
+                case State.RAW16, State.BIN16:
                     trail = load16To!size_t(buffer_[base..base + trail]);
                     if (trail == 0)
                         goto Lraw;
                     state = State.RAW;
                     cur++;
                     goto Lstart;
-                case State.RAW32:
+                case State.RAW32, State.BIN32:
                     trail = load32To!size_t(buffer_[base..base + trail]);
                     if (trail == 0)
                         goto Lraw;
@@ -4598,6 +4625,16 @@ enum Format : ubyte
     RAW   = 0xa0,
     RAW16 = 0xda,
     RAW32 = 0xdb,
+
+    // bin type
+    BIN8  = 0xc4,
+    BIN16 = 0xc5,
+    BIN32 = 0xc6,
+
+    // str type
+    STR8  = 0xd9,
+    //STR16 = 0xda,
+    //STR32 = 0xdb,
 
     // array
     ARRAY   = 0x90,
