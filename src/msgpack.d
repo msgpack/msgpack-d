@@ -1993,7 +1993,7 @@ struct Unpacker
      *  UnpackException when doesn't read from buffer or precision loss occurs and
      *  MessagePackException when $(D_PARAM T) type doesn't match serialized type.
      */
-    ref Unpacker unpack(T)(ref T array) if (isArray!T)
+    ref Unpacker unpack(T)(ref T array) if (isArray!T && !is(Unqual!T == enum))
     {
         alias typeof(T.init[0]) U;
 
@@ -2971,7 +2971,7 @@ struct Value
 
     /// ditto
     @property @trusted
-    T as(T)() if (isArray!T)
+    T as(T)() if (isArray!T && !is(Unqual!T == enum))
     {
         alias typeof(T.init[0]) V;
 
@@ -3337,6 +3337,11 @@ unittest
     assert(value             == other);
     assert(value.type        == Value.Type.raw);
     assert(value.as!(string) == "hello");
+
+    // enum : string
+    enum EStr : string { elem = "hello" }
+
+    assert(value.as!(EStr) == EStr.elem);
 
     // array
     auto t = Value(cast(ubyte[])[72, 105, 33]);
