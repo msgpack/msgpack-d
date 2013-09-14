@@ -5,7 +5,7 @@ language: d
 
 install:
   # dmd
-  - DMD_VERSION=2.062
+  - DMD_VERSION=2.063
   - wget http://ftp.digitalmars.com/dmd.${DMD_VERSION}.zip
   - unzip dmd.${DMD_VERSION}.zip
 
