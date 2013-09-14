@@ -289,7 +289,7 @@ unittest
  */
 class MessagePackException : Exception
 {
-    this(string message)
+    pure this(string message)
     {
         super(message);
     }
