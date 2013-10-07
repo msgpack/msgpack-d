@@ -7,6 +7,5 @@
     "copyright":   "Copyright (c) 2010- Masahiro Nakagawa",
 
     "importPaths": ["src"],
-    "dflags-dmd":  ["-w", "-d", "-property"],
     "targetType":  "library"
 }
