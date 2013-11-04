@@ -314,7 +314,7 @@ struct nonPacked {}
 
 template isPackedField(alias field)
 {
-    enum isPackedField = staticIndexOf!(nonPacked, __traits(getAttributes, field)) == -1;
+    enum isPackedField = (staticIndexOf!(nonPacked, __traits(getAttributes, field)) == -1) && (!isSomeFunction!(typeof(field)));
 }
 
 
@@ -824,14 +824,14 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
                 Class obj = cast(Class)object;
                 if (withFieldName_) {
                     foreach (i, f ; obj.tupleof) {
-                        if (isPackedField!(Class.tupleof[i])) {
+                        static if (isPackedField!(Class.tupleof[i])) {
                             pack(getFieldName!(Class, i));
                             pack(f);
                         }
                     }
                 } else {
                     foreach (i, f ; obj.tupleof) {
-                        if (isPackedField!(Class.tupleof[i]))
+                        static if (isPackedField!(Class.tupleof[i]))
                             pack(f);
                     }
                 }
@@ -867,14 +867,15 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
             if (withFieldName_) {
                 foreach (i, f; object.tupleof) {
-                    if (isPackedField!(T.tupleof[i])) {
+                    static if (isPackedField!(T.tupleof[i]))
+                    {
                         pack(getFieldName!(T, i));
                         pack(f);
                     }
                 }
             } else {
                 foreach (i, f; object.tupleof) {
-                    if (isPackedField!(T.tupleof[i]))
+                    static if (isPackedField!(T.tupleof[i]))
                         pack(f);
                 }
             }
@@ -1332,7 +1333,14 @@ unittest
                 uint num = uint.max;
             }
 
-            foreach (Type; TypeTuple!(Simple, SimpleWithNonPacked1, SimpleWithNonPacked2)) {
+            static struct SimpleWithSkippedTypes
+            {
+                int function(int) fn;
+                int delegate(int) dg;
+                uint num = uint.max;
+            }
+
+            foreach (Type; TypeTuple!(Simple, SimpleWithNonPacked1, SimpleWithNonPacked2, SimpleWithSkippedTypes)) {
                 mixin DefinePacker;
 
                 Type test;
@@ -1371,8 +1379,15 @@ unittest
             uint num = uint.max;
         }
 
+        static class SimpleCWithSkippedTypes : SimpleB
+        {
+            uint num = uint.max;
+            int function(int) fn;
+            int delegate(int) dg;
+        }
+
         {  // from derived class
-            foreach (Type; TypeTuple!(SimpleC, SimpleCWithNonPacked1, SimpleCWithNonPacked2)) {
+            foreach (Type; TypeTuple!(SimpleC, SimpleCWithNonPacked1, SimpleCWithNonPacked2, SimpleCWithSkippedTypes)) {
                 mixin DefinePacker;
 
                 Type test = new Type();
@@ -2157,7 +2172,7 @@ struct Unpacker
             foreach (Class; Classes) {
                 Class obj = cast(Class)object;
                 foreach (i, member; obj.tupleof) {
-                    if (isPackedField!(Class.tupleof[i]))
+                    static if (isPackedField!(Class.tupleof[i]))
                         unpack(obj.tupleof[i]);
                 }
             }
@@ -2194,7 +2209,7 @@ struct Unpacker
                     rollback(calculateSize(length));
 
                 foreach (i, member; object.tupleof) {
-                    if (isPackedField!(T.tupleof[i]))
+                    static if (isPackedField!(T.tupleof[i]))
                         unpack(object.tupleof[i]);
                 }
             }
@@ -3059,7 +3074,7 @@ struct Value
             foreach (Class; Classes) {
                 Class obj = cast(Class)object;
                 foreach (i, member; obj.tupleof) {
-                    if (isPackedField!(Class.tupleof[i]))
+                    static if (isPackedField!(Class.tupleof[i]))
                         obj.tupleof[i] = via.array[offset++].as!(typeof(member));
                 }
             }
@@ -3095,7 +3110,7 @@ struct Value
 
                 size_t offset;
                 foreach (i, member; obj.tupleof) {
-                    if (isPackedField!(T.tupleof[i]))
+                    static if (isPackedField!(T.tupleof[i]))
                         obj.tupleof[i] = via.array[offset++].as!(typeof(member));
                 }
             }
