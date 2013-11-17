@@ -1685,6 +1685,7 @@ struct Unpacker
 
     mixin InternalBuffer;
 
+    bool withFieldName_;
 
   public:
     /**
@@ -2144,8 +2145,13 @@ struct Unpacker
         if (checkNil())
             return unpackNil(object);
 
-        if (object is null)
-            object = new T(args);
+        if (object is null) {
+            //static if (is(typeof(new T(args))))
+            static if (__traits(compiles, { new T(args); }))
+                object = new T(args);
+            else
+                throw new MessagePackException("Don't know how to construct class type '" ~ Unqual!T.stringof ~ "' with argument types '" ~ Args.stringof ~ "'.");
+        }
 
         static if (hasMember!(T, "fromMsgpack"))
         {
@@ -2741,6 +2747,25 @@ unittest
                 unpacker.unpack(result);
                 assert(false);
             } catch (Exception e) { }
+        }
+        { // https://github.com/msgpack/msgpack-d/issues/16
+            static class Issue16
+            {
+                int i;
+                this(int i) { this.i = i; }
+            }
+
+            Issue16 c1 = new Issue16(10);
+
+            try {
+                Issue16 c2 = null;
+                unpack(pack(c1), c2);
+                assert(false);
+            } catch (Exception e) {}
+
+            Issue16 c3 = new Issue16(20);
+            unpack(pack(c1), c3);
+            assert(c3.i == c1.i);
         }
     }
     { // variadic
