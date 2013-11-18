@@ -1682,10 +1682,8 @@ struct Unpacker
 {
   private:
     enum Offset = 1;
-
-    mixin InternalBuffer;
-
     bool withFieldName_;
+    mixin InternalBuffer;
 
   public:
     /**
@@ -1695,9 +1693,10 @@ struct Unpacker
      *  target     = byte buffer to deserialize
      *  bufferSize = size limit of buffer size
      */
-    this(in ubyte[] target, in size_t bufferSize = 8192)
+    this(in ubyte[] target, in size_t bufferSize = 8192, bool withFieldName = false)
     {
         initializeBuffer(target, bufferSize);
+        withFieldName_ = withFieldName;
     }
 
 
@@ -2155,7 +2154,9 @@ struct Unpacker
 
         static if (hasMember!(T, "fromMsgpack"))
         {
-            static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
+            static if (__traits(compiles, { T t; t.fromMsgpack(this, withFieldName_); })) {
+              object.fromMsgpack(this, withFieldName_);
+            } else static if (__traits(compiles, { T t; t.fromMsgpack(this); })) { // backward compatible
                 object.fromMsgpack(this);
             } else {
                 static assert(0, "Failed to invoke 'fromMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
@@ -2168,18 +2169,45 @@ struct Unpacker
 
             alias SerializingClasses!(T) Classes;
 
-            auto length = beginArray();
+            size_t length = 0;
+            if (withFieldName_)
+                length = beginMap();
+            else
+                length = beginArray();
+
             if (length == 0)
                 return this;
 
             if (length != SerializingMemberNumbers!(Classes))
                 rollback(calculateSize(length));
 
-            foreach (Class; Classes) {
-                Class obj = cast(Class)object;
-                foreach (i, member; obj.tupleof) {
-                    static if (isPackedField!(Class.tupleof[i]))
-                        unpack(obj.tupleof[i]);
+            if (withFieldName_) {
+                for ( int j = 0; j< length; j++) {
+                    string fieldName;
+                    unpack(fieldName);
+                    foreach (Class; Classes) {
+                          Class obj = cast(Class)object;
+
+                          foreach (i, f ; obj.tupleof) {
+                              static if (isPackedField!(Class.tupleof[i])) {
+                                  if( fieldName == getFieldName!(Class, i) ) {
+                                    unpack(obj.tupleof[i]);
+                                    goto endLoop;
+                                  }
+                              }
+                          }
+                      }
+                      assert(0, "Invalid field name! '" ~ fieldName~"' ");
+                endLoop: continue;
+                }
+            } else {
+                foreach (Class; Classes) {
+                    Class obj = cast(Class)object;
+
+                    foreach (i, member; obj.tupleof) {
+                        static if (isPackedField!(Class.tupleof[i]))
+                            unpack(obj.tupleof[i]);
+                    }
                 }
             }
         }
@@ -4372,14 +4400,36 @@ Unpacked unpack(Tdummy = void)(in ubyte[] buffer)
  *  buffer = the buffer to deserialize.
  *  args   = the references of values to assign.
  */
-void unpack(Args...)(in ubyte[] buffer, ref Args args)
+void unpack(bool withFieldName = false, Args...)(in ubyte[] buffer, ref Args args)
 {
-    auto unpacker = Unpacker(buffer);
+    auto unpacker = Unpacker(buffer, 8192, withFieldName);
 
     static if (Args.length == 1)
         unpacker.unpack(args[0]);
     else
         unpacker.unpackArray(args);
+}
+
+class TestClass {
+    string HelloWorld;
+    this(string hello)
+    {
+      this.HelloWorld = hello;
+    }
+    this() {}
+  }
+
+unittest
+{
+  void tester()
+  {
+    auto output = new TestClass();
+    auto input = new TestClass("Hello");
+    unpack!(true, TestClass)(pack!(true)(input), output);
+    assert(output.HelloWorld == "Hello", "Unpacking with field names failed");
+  }
+
+  tester();
 }
 
 
