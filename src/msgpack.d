@@ -1682,8 +1682,11 @@ struct Unpacker
 {
   private:
     enum Offset = 1;
-    bool withFieldName_;
+
     mixin InternalBuffer;
+
+    bool withFieldName_;
+
 
   public:
     /**
@@ -2169,12 +2172,7 @@ struct Unpacker
 
             alias SerializingClasses!(T) Classes;
 
-            size_t length = 0;
-            if (withFieldName_)
-                length = beginMap();
-            else
-                length = beginArray();
-
+            size_t length = withFieldName_ ? beginMap() : beginArray();
             if (length == 0)
                 return this;
 
@@ -2182,23 +2180,27 @@ struct Unpacker
                 rollback(calculateSize(length));
 
             if (withFieldName_) {
-                for ( int j = 0; j< length; j++) {
+                foreach (_; 0..length) {
                     string fieldName;
                     unpack(fieldName);
-                    foreach (Class; Classes) {
-                          Class obj = cast(Class)object;
 
-                          foreach (i, f ; obj.tupleof) {
-                              static if (isPackedField!(Class.tupleof[i])) {
-                                  if( fieldName == getFieldName!(Class, i) ) {
+                    foreach (Class; Classes) {
+                        Class obj = cast(Class)object;
+
+                        foreach (i, member; obj.tupleof) {
+                            static if (isPackedField!(Class.tupleof[i]))
+                            {
+                                if (fieldName == getFieldName!(Class, i)) {
                                     unpack(obj.tupleof[i]);
                                     goto endLoop;
-                                  }
-                              }
-                          }
-                      }
-                      assert(0, "Invalid field name! '" ~ fieldName~"' ");
-                endLoop: continue;
+                                }
+                            }
+                        }
+                    }
+                    assert(false, "Invalid field name: '" ~ fieldName~"' ");
+
+                endLoop:
+                    continue;
                 }
             } else {
                 foreach (Class; Classes) {
@@ -4410,28 +4412,6 @@ void unpack(bool withFieldName = false, Args...)(in ubyte[] buffer, ref Args arg
         unpacker.unpackArray(args);
 }
 
-class TestClass {
-    string HelloWorld;
-    this(string hello)
-    {
-      this.HelloWorld = hello;
-    }
-    this() {}
-  }
-
-unittest
-{
-  void tester()
-  {
-    auto output = new TestClass();
-    auto input = new TestClass("Hello");
-    unpack!(true, TestClass)(pack!(true)(input), output);
-    assert(output.HelloWorld == "Hello", "Unpacking with field names failed");
-  }
-
-  tester();
-}
-
 
 unittest
 {
@@ -4451,6 +4431,20 @@ unittest
         test.field[1] = "Hey!";
         unpack(pack(test.field[0], test.field[1]), result.field[0], result.field[1]);
         assert(result == test);
+    }
+    { // serialize object as a Map
+        static class C
+        {
+            int num;
+
+            this(int num) { this.num = num; }
+        }
+
+        auto test = new C(10);
+        auto result = new C(100);
+
+        unpack!(true)(pack!(true)(test), result);
+        assert(result.num == 10, "Unpacking with field names failed");
     }
 }
 
