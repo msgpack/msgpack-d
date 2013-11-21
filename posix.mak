@@ -6,7 +6,7 @@ ifeq (,$(DMD))
 endif
 
 LIB    = libmsgpack.a
-DFLAGS = -Isrc -m$(MODEL) -d -property # -w # disable -w because std/typecons.d(453): Warning: explicit element-wise assignment (this._expand_field_3)[]  =  (another._expand_field_3)[] is better than this._expand_field_3 = another._expand_field_3
+DFLAGS = -Isrc -m$(MODEL) -d -w
 
 ifeq (true, $(EnableReal))
 	DFLAGS += -version=EnableReal
