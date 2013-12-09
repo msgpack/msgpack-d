@@ -3865,19 +3865,19 @@ struct StreamingUnpacker
                     goto Lpush;
                 } else if (0xa0 <= header && header <= 0xbf) {  // fix raw
                     trail = header & 0x1f;
-                    if (trail == 0)
-                        goto Lraw;
                     state = State.RAW;
                     cur++;
-                    goto Lstart;
+                    continue;
                 } else if (0x90 <= header && header <= 0x9f) {  // fix array
                     if (!startContainer!"Array"(ContainerElement.ARRAY_ITEM, header & 0x0f))
                         goto Lpush;
-                    goto Lagain;
+                    cur++;
+                    continue;
                 } else if (0x80 <= header && header <= 0x8f) {  // fix map
                     if (!startContainer!"Map"(ContainerElement.MAP_KEY, header & 0x0f))
                         goto Lpush;
-                    goto Lagain;
+                    cur++;
+                    continue;
                 } else {
                     switch (header) {
                     case Format.UINT8, Format.UINT16, Format.UINT32, Format.UINT64,
@@ -4023,22 +4023,30 @@ struct StreamingUnpacker
                     if (!startContainer!"Array"(ContainerElement.ARRAY_ITEM,
                                                 load16To!size_t(buffer_[base..base + trail])))
                         goto Lpush;
-                    goto Lagain;
+                    state = State.HEADER;
+                    cur++;
+                    continue;
                 case State.ARRAY36:
                     if (!startContainer!"Array"(ContainerElement.ARRAY_ITEM,
                                                 load32To!size_t(buffer_[base..base + trail])))
                         goto Lpush;
-                    goto Lagain;
+                    state = State.HEADER;
+                    cur++;
+                    continue;
                 case State.MAP16:
                     if (!startContainer!"Map"(ContainerElement.MAP_KEY,
                                               load16To!size_t(buffer_[base..base + trail])))
                         goto Lpush;
-                    goto Lagain;
+                    state = State.HEADER;
+                    cur++;
+                    continue;
                 case State.MAP32:
                     if (!startContainer!"Map"(ContainerElement.MAP_KEY,
                                               load32To!size_t(buffer_[base..base + trail])))
                         goto Lpush;
-                    goto Lagain;
+                    state = State.HEADER;
+                    cur++;
+                    continue;
                 case State.HEADER:
                     break;
                 }
