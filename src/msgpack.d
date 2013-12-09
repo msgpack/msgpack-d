@@ -4081,7 +4081,6 @@ struct StreamingUnpacker
                 container.type = ContainerElement.MAP_KEY;
             }
 
-          Lagain:
             state = State.HEADER;
             cur++;
         } while (cur < used_);
