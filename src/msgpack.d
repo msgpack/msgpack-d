@@ -3823,6 +3823,7 @@ struct StreamingUnpacker
 
         bool   ret;
         size_t cur = offset_;
+        size_t base;
         Value obj;
 
         // restores before state
@@ -3830,6 +3831,7 @@ struct StreamingUnpacker
         auto trail =  context_.trail;
         auto top   =  context_.top;
         auto stack = &context_.stack;
+        typeof(&(*stack)[0]) container;
 
         /*
          * Helper for container deserialization
@@ -3927,7 +3929,7 @@ struct StreamingUnpacker
                 if (used_ - cur < trail)
                     goto Labort;
 
-                const base = cur; cur += trail - 1;  // fix current position
+                base = cur; cur += trail - 1;  // fix current position
 
                 final switch (state) {
                 case State.FLOAT:
@@ -4056,7 +4058,7 @@ struct StreamingUnpacker
             if (top == 0)
                 goto Lfinish;
 
-            auto container = &(*stack)[top - 1];
+            container = &(*stack)[top - 1];
 
             final switch (container.type) {
             case ContainerElement.ARRAY_ITEM:
