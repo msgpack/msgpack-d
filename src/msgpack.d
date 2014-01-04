@@ -4388,7 +4388,7 @@ unittest
  * Throws:
  *  UnpackException if deserialization doesn't succeed.
  */
-Unpacked unpack(Tdummy = void)(in ubyte[] buffer)
+Unpacked unpack(in ubyte[] buffer)
 {
     auto unpacker = StreamingUnpacker(buffer);
 
@@ -4411,12 +4411,25 @@ Unpacked unpack(Tdummy = void)(in ubyte[] buffer)
  */
 void unpack(bool withFieldName = false, Args...)(in ubyte[] buffer, ref Args args)
 {
-    auto unpacker = Unpacker(buffer, 8192, withFieldName);
+    auto unpacker = Unpacker(buffer, buffer.length, withFieldName);
 
     static if (Args.length == 1)
         unpacker.unpack(args[0]);
     else
         unpacker.unpackArray(args);
+}
+
+
+/**
+ * Return value version
+ */
+Type unpack(Type, bool withFieldName = false)(in ubyte[] buffer)
+{
+    auto unpacker = Unpacker(buffer, buffer.length, withFieldName);
+
+    Type result;
+    unpacker.unpack(result);
+    return result;
 }
 
 
@@ -4438,6 +4451,12 @@ unittest
         test.field[1] = "Hey!";
         unpack(pack(test.field[0], test.field[1]), result.field[0], result.field[1]);
         assert(result == test);
+    }
+    { // return value direct conversion
+        Tuple!(uint, string) test = tuple(1, "Hi!");
+
+        auto data = pack(test);
+        assert(data.unpack!(Tuple!(uint, string)) == test);
     }
     { // serialize object as a Map
         static class C
