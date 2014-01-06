@@ -340,6 +340,19 @@ template isPackedField(alias field)
 struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream, ubyte[]))
 {
   private:
+    static @system
+    {
+        alias void delegate(ref PackerImpl, void*) PackHandler;
+        PackHandler[string] packHandlers;
+
+        public void registerHandler(T, alias Handler)()
+        {
+            packHandlers[typeid(T).toString()] = delegate(ref PackerImpl packer, void* obj) {
+                Handler(packer, *cast(T*)obj);
+            };
+        }
+    }
+
     enum size_t Offset = 1;  // type-information offset
 
     Stream                   stream_;  // the stream to write
@@ -819,7 +832,10 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
                 static assert(0, "Failed to invoke 'toMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
             }
         } else {
-            // TODO: Add object serialization handler
+            if (auto handler = object.classinfo.toString() in packHandlers) {
+                (*handler)(this, cast(void*)&object);
+                return this;
+            }
             if (T.classinfo !is object.classinfo) {
                 throw new MessagePackException("Can't pack derived class through reference to base class.");
             }
@@ -855,6 +871,7 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
 
 
     /// ditto
+    @trusted
     ref PackerImpl pack(T)(auto ref T object) if (is(Unqual!T == struct))
     {
         static if (hasMember!(T, "toMsgpack"))
@@ -871,6 +888,11 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
             foreach (f; object.field)
                 pack(f);
         } else {  // simple struct
+            if (auto handler = typeid(T).toString() in packHandlers) {
+                (*handler)(this, cast(void*)&object);
+                return this;
+            }
+
             immutable memberNum = SerializingMemberNumbers!(T);
             if (withFieldName_)
                 beginMap(memberNum);
@@ -879,7 +901,7 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
 
             if (withFieldName_) {
                 foreach (i, f; object.tupleof) {
-                    static if (isPackedField!(T.tupleof[i]))
+                    static if (isPackedField!(T.tupleof[i]) && __traits(compiles, { pack(f); }))
                     {
                         pack(getFieldName!(T, i));
                         pack(f);
@@ -887,7 +909,7 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
                 }
             } else {
                 foreach (i, f; object.tupleof) {
-                    static if (isPackedField!(T.tupleof[i]))
+                    static if (isPackedField!(T.tupleof[i]) && __traits(compiles, { pack(f); }))
                         pack(f);
                 }
             }
@@ -1016,6 +1038,12 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
 
 
 alias PackerImpl!(Appender!(ubyte[])) Packer;  // should be pure struct?
+
+
+void registerPackHandler(T, alias Handler, Stream = Appender!(ubyte[]))()
+{
+    PackerImpl!(Stream).registerHandler!(T, Handler);
+}
 
 
 /**
@@ -1694,6 +1722,19 @@ else
 struct Unpacker
 {
   private:
+    static @system
+    {
+        alias void delegate(ref Unpacker, void*) UnpackHandler;
+        UnpackHandler[string] unpackHandlers;
+
+        public void registerHandler(T, alias Handler)()
+        {
+            unpackHandlers[typeid(T).toString()] = delegate(ref Unpacker unpacker, void* obj) {
+                Handler(unpacker, *cast(T*)obj);
+            };
+        }
+    }
+
     enum Offset = 1;
 
     mixin InternalBuffer;
@@ -2178,7 +2219,10 @@ struct Unpacker
                 static assert(0, "Failed to invoke 'fromMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
             }
         } else {
-            // TODO: Add object deserialization handler
+            if (auto handler = object.classinfo.toString() in unpackHandlers) {
+                (*handler)(this, cast(void*)&object);
+                return this;
+            }
             if (T.classinfo !is object.classinfo) {
                 throw new MessagePackException("Can't unpack derived class through reference to base class.");
             }
@@ -2242,6 +2286,11 @@ struct Unpacker
                 static assert(0, "Failed to invoke 'fromMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
             }
         } else {
+            if (auto handler = typeid(T).toString() in unpackHandlers) {
+                (*handler)(this, cast(void*)&object);
+                return this;
+            }
+
             auto length = beginArray();
             if (length == 0)
                 return this;
@@ -2545,6 +2594,12 @@ struct Unpacker
         offset_ -= size + Offset;
         onInvalidType();
     }
+}
+
+
+void registerUnpackHandler(T, alias Handler)()
+{
+    Unpacker.registerHandler!(T, Handler);
 }
 
 
