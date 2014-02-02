@@ -1050,7 +1050,7 @@ unittest
 
         enum : ulong { A = ubyte.max, B = ushort.max, C = uint.max, D = ulong.max }
 
-        static UTest[][] tests = [
+        static UTest[][] utests = [
             [{Format.UINT8, A}],
             [{Format.UINT8, A}, {Format.UINT16, B}],
             [{Format.UINT8, A}, {Format.UINT16, B}, {Format.UINT32, C}],
@@ -1058,7 +1058,7 @@ unittest
         ];
 
         foreach (I, T; TypeTuple!(ubyte, ushort, uint, ulong)) {
-            foreach (i, test; tests[I]) {
+            foreach (i, test; utests[I]) {
                 mixin DefinePacker;
 
                 packer.pack(cast(T)test.value);
@@ -1089,7 +1089,7 @@ unittest
 
         enum : long { A = byte.min, B = short.min, C = int.min, D = long.min }
 
-        static STest[][] tests = [
+        static STest[][] stests = [
             [{Format.INT8, A}],
             [{Format.INT8, A}, {Format.INT16, B}],
             [{Format.INT8, A}, {Format.INT16, B}, {Format.INT32, C}],
@@ -1097,7 +1097,7 @@ unittest
         ];
 
         foreach (I, T; TypeTuple!(byte, short, int, long)) {
-            foreach (i, test; tests[I]) {
+            foreach (i, test; stests[I]) {
                 mixin DefinePacker;
 
                 packer.pack(cast(T)test.value);
@@ -1129,7 +1129,7 @@ unittest
             alias TypeTuple!(float, double, double) FloatingTypes;
             static struct FTest { ubyte format; double value; }
 
-            static FTest[] tests = [
+            static FTest[] ftests = [
                 {Format.FLOAT,  float.min_normal},
                 {Format.DOUBLE, double.max},
                 {Format.DOUBLE, double.max},
@@ -1140,7 +1140,7 @@ unittest
             alias TypeTuple!(float, double, real) FloatingTypes;
             static struct FTest { ubyte format; real value; }
 
-            static FTest[] tests = [
+            static FTest[] ftests = [
                 {Format.FLOAT,  float.min_normal},
                 {Format.DOUBLE, double.max},
                 {Format.REAL,   real.max},
@@ -1150,22 +1150,22 @@ unittest
         foreach (I, T; FloatingTypes) {
             mixin DefinePacker;
 
-            packer.pack(cast(T)tests[I].value);
-            assert(buffer.data[0] == tests[I].format);
+            packer.pack(cast(T)ftests[I].value);
+            assert(buffer.data[0] == ftests[I].format);
 
             switch (I) {
             case 0:
-                const answer = convertEndianTo!32(_f(cast(T)tests[I].value).i);
+                const answer = convertEndianTo!32(_f(cast(T)ftests[I].value).i);
                 assert(memcmp(&buffer.data[1], &answer, float.sizeof) == 0);
                 break;
             case 1:
-                const answer = convertEndianTo!64(_d(cast(T)tests[I].value).i);
+                const answer = convertEndianTo!64(_d(cast(T)ftests[I].value).i);
                 assert(memcmp(&buffer.data[1], &answer, double.sizeof) == 0);
                 break;
             default:
                 static if (EnableReal)
                 {
-                    const t = _r(cast(T)tests[I].value);
+                    const t = _r(cast(T)ftests[I].value);
                     const f = convertEndianTo!64(t.fraction);
                     const e = convertEndianTo!16(t.exponent);
                     assert(memcmp(&buffer.data[1],            &f, f.sizeof) == 0);
@@ -1173,7 +1173,7 @@ unittest
                 }
                 else
                 {
-                    const answer = convertEndianTo!64(_d(cast(T)tests[I].value).i);
+                    const answer = convertEndianTo!64(_d(cast(T)ftests[I].value).i);
                     assert(memcmp(&buffer.data[1], &answer, double.sizeof) == 0);
                 }
             }
@@ -1192,7 +1192,7 @@ unittest
             }
         }
 
-        PTest[] tests = [PTest(Format.UINT64), PTest(Format.INT64), PTest(Format.DOUBLE)];
+        PTest[] ptests = [PTest(Format.UINT64), PTest(Format.INT64), PTest(Format.DOUBLE)];
 
         ulong  v0 = ulong.max;
         long   v1 = long.min;
@@ -1201,22 +1201,22 @@ unittest
         foreach (I, Index; TypeTuple!("0", "1", "2")) {
             mixin DefinePacker;
 
-            mixin("tests[I].p" ~ Index ~ " = &v" ~ Index ~ ";");
+            mixin("ptests[I].p" ~ Index ~ " = &v" ~ Index ~ ";");
 
-            packer.pack(mixin("tests[I].p" ~ Index));
-            assert(buffer.data[0] == tests[I].format);
+            packer.pack(mixin("ptests[I].p" ~ Index));
+            assert(buffer.data[0] == ptests[I].format);
 
             switch (I) {
             case 0:
-                auto answer = convertEndianTo!64(*tests[I].p0);
+                auto answer = convertEndianTo!64(*ptests[I].p0);
                 assert(memcmp(&buffer.data[1], &answer, ulong.sizeof) == 0);
                 break;
             case 1:
-                auto answer = convertEndianTo!64(*tests[I].p1);
+                auto answer = convertEndianTo!64(*ptests[I].p1);
                 assert(memcmp(&buffer.data[1], &answer, long.sizeof) == 0);
                 break;
             default:
-                const answer = convertEndianTo!64(_d(*tests[I].p2).i);
+                const answer = convertEndianTo!64(_d(*ptests[I].p2).i);
                 assert(memcmp(&buffer.data[1], &answer, double.sizeof) == 0);
             }
         }
@@ -1233,17 +1233,17 @@ unittest
         assert(memcmp(&buffer.data[1], &answer, (OriginalType!E).sizeof) == 0);
     }
     { // container
-        static struct Test { ubyte format; size_t value; }
+        static struct CTest { ubyte format; size_t value; }
 
         enum : ulong { A = 16 / 2, B = ushort.max, C = uint.max }
 
-        static Test[][] tests = [
+        static CTest[][] ctests = [
             [{Format.ARRAY | A, Format.ARRAY | A}, {Format.ARRAY16, B}, {Format.ARRAY32, C}],
             [{Format.MAP   | A, Format.MAP   | A}, {Format.MAP16,   B}, {Format.MAP32,   C}],
         ];
 
         foreach (I, Name; TypeTuple!("Array", "Map")) {
-            auto test = tests[I];
+            auto test = ctests[I];
 
             foreach (i, T; TypeTuple!(ubyte, ushort, uint)) {
                 mixin DefinePacker;
