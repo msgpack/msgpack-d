@@ -40,7 +40,7 @@ void main()
     S input = S(10, 25.5, "message");
 
     // serialize data
-    ubyte[] inData = msgpack.pack(input);
+    ubyte[] inData = pack(input);
 
     // write data to a file
     write("file.dat", inData);
@@ -49,8 +49,7 @@ void main()
     ubyte[] outData = cast(ubyte[])read("file.dat");
 
     // unserialize data
-    S target;
-    msgpack.unpack(outData, target);
+    S target = outData.unpack!S();
 
     // verify data is the same
     assert(target.x == input.x);
