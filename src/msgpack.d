@@ -337,7 +337,7 @@ template isPackedField(alias field)
  *  Current implementation can't deal with a circular reference.
  *  If you try to serialize a object that has circular reference, runtime raises 'Stack Overflow'.
  */
-struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream, ubyte[]))
+struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream, ubyte[]))
 {
   private:
     enum size_t Offset = 1;  // type-information offset
@@ -353,11 +353,23 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
      *
      * Params:
      *  stream        = the stream to write.
-     *  withFieldName = serialize a field name at class or struct
+     *  withFieldName = serialize class / struct with field name
      */
     this(Stream stream, bool withFieldName = false)
     {
         stream_        = stream;
+        withFieldName_ = withFieldName;
+    }
+
+
+    /**
+     * Constructs a packer with $(D_PARAM withFieldName).
+     *
+     * Params:
+     *  withFieldName = serialize class / struct with field name
+     */
+    this(bool withFieldName = false)
+    {
         withFieldName_ = withFieldName;
     }
 
@@ -398,7 +410,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
      * Returns:
      *  self, i.e. for method chaining.
      */
-    ref Packer pack(T)(in T value) if (is(Unqual!T == bool))
+    ref PackerImpl pack(T)(in T value) if (is(Unqual!T == bool))
     {
         if (value)
             stream_.put(Format.TRUE);
@@ -410,7 +422,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer pack(T)(in T value) if (isUnsigned!T && !is(Unqual!T == enum))
+    ref PackerImpl pack(T)(in T value) if (isUnsigned!T && !is(Unqual!T == enum))
     {
         // ulong < ulong is slower than uint < uint
         static if (!is(Unqual!T  == ulong)) {
@@ -485,7 +497,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer pack(T)(in T value) if (isSigned!T && isIntegral!T && !is(Unqual!T == enum))
+    ref PackerImpl pack(T)(in T value) if (isSigned!T && isIntegral!T && !is(Unqual!T == enum))
     {
         // long < long is slower than int < int
         static if (!is(Unqual!T == long)) {
@@ -613,7 +625,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer pack(T)(in T value) if (isFloatingPoint!T && !is(Unqual!T == enum))
+    ref PackerImpl pack(T)(in T value) if (isFloatingPoint!T && !is(Unqual!T == enum))
     {
         static if (is(Unqual!T == float)) {
             const temp = convertEndianTo!32(_f(value).i);
@@ -647,7 +659,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer pack(T)(in T value) if (is(Unqual!T == enum))
+    ref PackerImpl pack(T)(in T value) if (is(Unqual!T == enum))
     {
         pack(cast(OriginalType!T)value);
 
@@ -658,7 +670,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
     /// Overload for pack(null) for 2.057 or later
     static if (!is(typeof(null) == void*))
     {
-        ref Packer pack(T)(in T value) if (is(Unqual!T == typeof(null)))
+        ref PackerImpl pack(T)(in T value) if (is(Unqual!T == typeof(null)))
         {
             return packNil();
         }
@@ -666,7 +678,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer pack(T)(in T value) if (isPointer!T)
+    ref PackerImpl pack(T)(in T value) if (isPointer!T)
     {
         static if (is(Unqual!T == void*)) {  // for pack(null) for 2.056 or earlier
             enforce(value is null, "Can't serialize void type");
@@ -683,7 +695,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer pack(T)(in T array) if (isArray!T)
+    ref PackerImpl pack(T)(in T array) if (isArray!T)
     {
         alias typeof(T.init[0]) U;
 
@@ -730,7 +742,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer pack(T)(in T array) if (isAssociativeArray!T)
+    ref PackerImpl pack(T)(in T array) if (isAssociativeArray!T)
     {
         if (array is null)
             return packNil();
@@ -746,7 +758,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer pack(Types...)(auto ref const Types objects) if (Types.length > 1)
+    ref PackerImpl pack(Types...)(auto ref const Types objects) if (Types.length > 1)
     {
         foreach (i, T; Types)
             pack(objects[i]);
@@ -792,7 +804,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
      * Returns:
      *  self, i.e. for method chaining.
      */
-    ref Packer pack(T)(in T object) if (is(Unqual!T == class))
+    ref PackerImpl pack(T)(in T object) if (is(Unqual!T == class))
     {
         if (object is null)
             return packNil();
@@ -843,7 +855,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer pack(T)(auto ref T object) if (is(Unqual!T == struct))
+    ref PackerImpl pack(T)(auto ref T object) if (is(Unqual!T == struct))
     {
         static if (hasMember!(T, "toMsgpack"))
         {
@@ -901,7 +913,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
      * Returns:
      *  self, i.e. for method chaining.
      */
-    ref Packer packArray(Types...)(auto ref const Types objects)
+    ref PackerImpl packArray(Types...)(auto ref const Types objects)
     {
         beginArray(Types.length);
         foreach (i, T; Types)
@@ -913,7 +925,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer packMap(Types...)(auto ref const Types objects)
+    ref PackerImpl packMap(Types...)(auto ref const Types objects)
     {
         static assert(Types.length % 2 == 0, "The number of arguments must be even");
 
@@ -944,7 +956,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
      * Returns:
      *  self, i.e. for method chaining.
      */
-    ref Packer beginArray(in size_t length)
+    ref PackerImpl beginArray(in size_t length)
     {
         if (length < 16) {
             const ubyte temp = Format.ARRAY | cast(ubyte)length;
@@ -968,7 +980,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 
 
     /// ditto
-    ref Packer beginMap(in size_t length)
+    ref PackerImpl beginMap(in size_t length)
     {
         if (length < 16) {
             const ubyte temp = Format.MAP | cast(ubyte)length;
@@ -995,7 +1007,7 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
     /*
      * Serializes the nil value.
      */
-    ref Packer packNil()
+    ref PackerImpl packNil()
     {
         stream_.put(Format.NIL);
         return this;
@@ -1003,16 +1015,20 @@ struct Packer(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(Stream
 }
 
 
+alias PackerImpl!(Appender!(ubyte[])) Packer;  // should be pure struct?
+
+
 /**
  * Helper for $(D Packer) construction.
  *
  * Params:
  *  stream = the stream to write.
+ *  withFieldName = serialize class / struct with field name
  *
  * Returns:
  *  a $(D Packer) object instantiated and initialized according to the arguments.
  */
-Packer!(Stream) packer(Stream)(Stream stream, bool withFieldName = false)
+PackerImpl!(Stream) packer(Stream)(Stream stream, bool withFieldName = false)
 {
     return typeof(return)(stream, withFieldName);
 }
@@ -1020,17 +1036,14 @@ Packer!(Stream) packer(Stream)(Stream stream, bool withFieldName = false)
 
 version (unittest)
 {
-    alias Appender!(ubyte[]) SimpleBuffer;
-    alias packer packerBuilder;  // Avoid issue: http://d.puremagic.com/issues/show_bug.cgi?id=9169
-
     mixin template DefinePacker()
     {
-        SimpleBuffer buffer; Packer!(SimpleBuffer*) packer = packerBuilder(&buffer);
+        Packer packer;
     }
 
     mixin template DefineDictionalPacker()
     {
-        SimpleBuffer buffer; Packer!(SimpleBuffer*) packer = packerBuilder(&buffer, true);
+        Packer packer = Packer(false);
     }
 }
 
@@ -1062,24 +1075,24 @@ unittest
                 mixin DefinePacker;
 
                 packer.pack(cast(T)test.value);
-                assert(buffer.data[0] == test.format);
+                assert(packer.stream.data[0] == test.format);
 
                 switch (i) {
                 case 0:
                     auto answer = take8from!(T.sizeof * 8)(test.value);
-                    assert(memcmp(&buffer.data[1], &answer, ubyte.sizeof) == 0);
+                    assert(memcmp(&packer.stream.data[1], &answer, ubyte.sizeof) == 0);
                     break;
                 case 1:
                     auto answer = convertEndianTo!16(test.value);
-                    assert(memcmp(&buffer.data[1], &answer, ushort.sizeof) == 0);
+                    assert(memcmp(&packer.stream.data[1], &answer, ushort.sizeof) == 0);
                     break;
                 case 2:
                     auto answer = convertEndianTo!32(test.value);
-                    assert(memcmp(&buffer.data[1], &answer, uint.sizeof) == 0);
+                    assert(memcmp(&packer.stream.data[1], &answer, uint.sizeof) == 0);
                     break;
                 default:
                     auto answer = convertEndianTo!64(test.value);
-                    assert(memcmp(&buffer.data[1], &answer, ulong.sizeof) == 0);
+                    assert(memcmp(&packer.stream.data[1], &answer, ulong.sizeof) == 0);
                 }
             }
         }
@@ -1101,24 +1114,24 @@ unittest
                 mixin DefinePacker;
 
                 packer.pack(cast(T)test.value);
-                assert(buffer.data[0] == test.format);
+                assert(packer.stream.data[0] == test.format);
 
                 switch (i) {
                 case 0:
                     auto answer = take8from!(T.sizeof * 8)(test.value);
-                    assert(memcmp(&buffer.data[1], &answer, byte.sizeof) == 0);
+                    assert(memcmp(&packer.stream.data[1], &answer, byte.sizeof) == 0);
                     break;
                 case 1:
                     auto answer = convertEndianTo!16(test.value);
-                    assert(memcmp(&buffer.data[1], &answer, short.sizeof) == 0);
+                    assert(memcmp(&packer.stream.data[1], &answer, short.sizeof) == 0);
                     break;
                 case 2:
                     auto answer = convertEndianTo!32(test.value);
-                    assert(memcmp(&buffer.data[1], &answer, int.sizeof) == 0);
+                    assert(memcmp(&packer.stream.data[1], &answer, int.sizeof) == 0);
                     break;
                 default:
                     auto answer = convertEndianTo!64(test.value);
-                    assert(memcmp(&buffer.data[1], &answer, long.sizeof) == 0);
+                    assert(memcmp(&packer.stream.data[1], &answer, long.sizeof) == 0);
                 }
             }
         }
@@ -1151,16 +1164,16 @@ unittest
             mixin DefinePacker;
 
             packer.pack(cast(T)ftests[I].value);
-            assert(buffer.data[0] == ftests[I].format);
+            assert(packer.stream.data[0] == ftests[I].format);
 
             switch (I) {
             case 0:
                 const answer = convertEndianTo!32(_f(cast(T)ftests[I].value).i);
-                assert(memcmp(&buffer.data[1], &answer, float.sizeof) == 0);
+                assert(memcmp(&packer.stream.data[1], &answer, float.sizeof) == 0);
                 break;
             case 1:
                 const answer = convertEndianTo!64(_d(cast(T)ftests[I].value).i);
-                assert(memcmp(&buffer.data[1], &answer, double.sizeof) == 0);
+                assert(memcmp(&packer.stream.data[1], &answer, double.sizeof) == 0);
                 break;
             default:
                 static if (EnableReal)
@@ -1168,13 +1181,13 @@ unittest
                     const t = _r(cast(T)ftests[I].value);
                     const f = convertEndianTo!64(t.fraction);
                     const e = convertEndianTo!16(t.exponent);
-                    assert(memcmp(&buffer.data[1],            &f, f.sizeof) == 0);
-                    assert(memcmp(&buffer.data[1 + f.sizeof], &e, e.sizeof) == 0);
+                    assert(memcmp(&packer.stream.data[1],            &f, f.sizeof) == 0);
+                    assert(memcmp(&packer.stream.data[1 + f.sizeof], &e, e.sizeof) == 0);
                 }
                 else
                 {
                     const answer = convertEndianTo!64(_d(cast(T)ftests[I].value).i);
-                    assert(memcmp(&buffer.data[1], &answer, double.sizeof) == 0);
+                    assert(memcmp(&packer.stream.data[1], &answer, double.sizeof) == 0);
                 }
             }
         }
@@ -1204,20 +1217,20 @@ unittest
             mixin("ptests[I].p" ~ Index ~ " = &v" ~ Index ~ ";");
 
             packer.pack(mixin("ptests[I].p" ~ Index));
-            assert(buffer.data[0] == ptests[I].format);
+            assert(packer.stream.data[0] == ptests[I].format);
 
             switch (I) {
             case 0:
                 auto answer = convertEndianTo!64(*ptests[I].p0);
-                assert(memcmp(&buffer.data[1], &answer, ulong.sizeof) == 0);
+                assert(memcmp(&packer.stream.data[1], &answer, ulong.sizeof) == 0);
                 break;
             case 1:
                 auto answer = convertEndianTo!64(*ptests[I].p1);
-                assert(memcmp(&buffer.data[1], &answer, long.sizeof) == 0);
+                assert(memcmp(&packer.stream.data[1], &answer, long.sizeof) == 0);
                 break;
             default:
                 const answer = convertEndianTo!64(_d(*ptests[I].p2).i);
-                assert(memcmp(&buffer.data[1], &answer, double.sizeof) == 0);
+                assert(memcmp(&packer.stream.data[1], &answer, double.sizeof) == 0);
             }
         }
     }
@@ -1227,10 +1240,10 @@ unittest
         mixin DefinePacker; E e = E.A;
 
         packer.pack(e);
-        assert(buffer.data[0] == Format.UINT8);
+        assert(packer.stream.data[0] == Format.UINT8);
 
         auto answer = E.A;
-        assert(memcmp(&buffer.data[1], &answer, (OriginalType!E).sizeof) == 0);
+        assert(memcmp(&packer.stream.data[1], &answer, (OriginalType!E).sizeof) == 0);
     }
     { // container
         static struct CTest { ubyte format; size_t value; }
@@ -1249,20 +1262,20 @@ unittest
                 mixin DefinePacker;
                 mixin("packer.begin" ~ Name ~ "(i ? test[i].value : A);");
 
-                assert(buffer.data[0] == test[i].format);
+                assert(packer.stream.data[0] == test[i].format);
 
                 switch (i) {
                 case 0:
                     auto answer = take8from(test[i].value);
-                    assert(memcmp(&buffer.data[0], &answer, ubyte.sizeof) == 0);
+                    assert(memcmp(&packer.stream.data[0], &answer, ubyte.sizeof) == 0);
                     break;
                 case 1:
                     auto answer = convertEndianTo!16(test[i].value);
-                    assert(memcmp(&buffer.data[1], &answer, ushort.sizeof) == 0);
+                    assert(memcmp(&packer.stream.data[1], &answer, ushort.sizeof) == 0);
                     break;
                 default:
                     auto answer = convertEndianTo!32(test[i].value);
-                    assert(memcmp(&buffer.data[1], &answer, uint.sizeof) == 0);
+                    assert(memcmp(&packer.stream.data[1], &answer, uint.sizeof) == 0);
                 }
             }
         }
@@ -1280,20 +1293,20 @@ unittest
 
             packer.pack(test);
 
-            assert(buffer.data[0] == (Format.ARRAY | 1));
-            assert(buffer.data[1] ==  Format.UINT32);
-            assert(memcmp(&buffer.data[2], &test.num, uint.sizeof) == 0);
+            assert(packer.stream.data[0] == (Format.ARRAY | 1));
+            assert(packer.stream.data[1] ==  Format.UINT32);
+            assert(memcmp(&packer.stream.data[2], &test.num, uint.sizeof) == 0);
         }
         {
             mixin DefinePacker; auto test = tuple(true, false, uint.max);
 
             packer.pack(test);
 
-            assert(buffer.data[0] == (Format.ARRAY | 3));
-            assert(buffer.data[1] ==  Format.TRUE);
-            assert(buffer.data[2] ==  Format.FALSE);
-            assert(buffer.data[3] ==  Format.UINT32);
-            assert(memcmp(&buffer.data[4], &test.field[2], uint.sizeof) == 0);
+            assert(packer.stream.data[0] == (Format.ARRAY | 3));
+            assert(packer.stream.data[1] ==  Format.TRUE);
+            assert(packer.stream.data[2] ==  Format.FALSE);
+            assert(packer.stream.data[3] ==  Format.UINT32);
+            assert(memcmp(&packer.stream.data[4], &test.field[2], uint.sizeof) == 0);
         }
         {
             static class C
@@ -1309,9 +1322,9 @@ unittest
 
             packer.pack(test);
 
-            assert(buffer.data[0] == (Format.ARRAY | 1));
-            assert(buffer.data[1] ==  Format.UINT16);
-            assert(memcmp(&buffer.data[2], &test.num, ushort.sizeof) == 0);
+            assert(packer.stream.data[0] == (Format.ARRAY | 1));
+            assert(packer.stream.data[1] ==  Format.UINT16);
+            assert(memcmp(&packer.stream.data[2], &test.num, ushort.sizeof) == 0);
         }
     }
     { // simple struct and class
@@ -1346,9 +1359,9 @@ unittest
                 Type test;
                 packer.pack(test);
 
-                assert(buffer.data[0] == (Format.ARRAY | 1));
-                assert(buffer.data[1] ==  Format.UINT32);
-                assert(memcmp(&buffer.data[2], &test.num, uint.sizeof) == 0);
+                assert(packer.stream.data[0] == (Format.ARRAY | 1));
+                assert(packer.stream.data[1] ==  Format.UINT32);
+                assert(memcmp(&packer.stream.data[2], &test.num, uint.sizeof) == 0);
             }
         }
 
@@ -1393,11 +1406,11 @@ unittest
                 Type test = new Type();
                 packer.pack(test);
 
-                assert(buffer.data[0] == (Format.ARRAY | 3));
-                assert(buffer.data[1] ==  Format.TRUE);
-                assert(buffer.data[2] ==  100);
-                assert(buffer.data[3] ==  Format.UINT32);
-                assert(memcmp(&buffer.data[4], &test.num, uint.sizeof) == 0);
+                assert(packer.stream.data[0] == (Format.ARRAY | 3));
+                assert(packer.stream.data[1] ==  Format.TRUE);
+                assert(packer.stream.data[2] ==  100);
+                assert(packer.stream.data[3] ==  Format.UINT32);
+                assert(memcmp(&packer.stream.data[4], &test.num, uint.sizeof) == 0);
             }
         }
         {  // from base class
@@ -4350,7 +4363,7 @@ public:
  */
 ubyte[] pack(bool withFieldName = false, Args...)(in Args args)
 {
-    auto packer = packer(Appender!(ubyte[])(), withFieldName);
+    auto packer = Packer(withFieldName);
 
     static if (Args.length == 1)
         packer.pack(args[0]);
