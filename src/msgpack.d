@@ -343,11 +343,11 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
     static @system
     {
         alias void delegate(ref PackerImpl, void*) PackHandler;
-        PackHandler[string] packHandlers;
+        PackHandler[TypeInfo] packHandlers;
 
         public void registerHandler(T, alias Handler)()
         {
-            packHandlers[typeid(T).toString()] = delegate(ref PackerImpl packer, void* obj) {
+            packHandlers[typeid(T)] = delegate(ref PackerImpl packer, void* obj) {
                 Handler(packer, *cast(T*)obj);
             };
         }
@@ -832,7 +832,7 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
                 static assert(0, "Failed to invoke 'toMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
             }
         } else {
-            if (auto handler = object.classinfo.toString() in packHandlers) {
+            if (auto handler = object.classinfo in packHandlers) {
                 (*handler)(this, cast(void*)&object);
                 return this;
             }
@@ -888,7 +888,7 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
             foreach (f; object.field)
                 pack(f);
         } else {  // simple struct
-            if (auto handler = typeid(T).toString() in packHandlers) {
+            if (auto handler = typeid(T) in packHandlers) {
                 (*handler)(this, cast(void*)&object);
                 return this;
             }
@@ -1725,11 +1725,11 @@ struct Unpacker
     static @system
     {
         alias void delegate(ref Unpacker, void*) UnpackHandler;
-        UnpackHandler[string] unpackHandlers;
+        UnpackHandler[TypeInfo] unpackHandlers;
 
         public void registerHandler(T, alias Handler)()
         {
-            unpackHandlers[typeid(T).toString()] = delegate(ref Unpacker unpacker, void* obj) {
+            unpackHandlers[typeid(T)] = delegate(ref Unpacker unpacker, void* obj) {
                 Handler(unpacker, *cast(T*)obj);
             };
         }
@@ -2219,7 +2219,7 @@ struct Unpacker
                 static assert(0, "Failed to invoke 'fromMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
             }
         } else {
-            if (auto handler = object.classinfo.toString() in unpackHandlers) {
+            if (auto handler = object.classinfo in unpackHandlers) {
                 (*handler)(this, cast(void*)&object);
                 return this;
             }
@@ -2286,7 +2286,7 @@ struct Unpacker
                 static assert(0, "Failed to invoke 'fromMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
             }
         } else {
-            if (auto handler = typeid(T).toString() in unpackHandlers) {
+            if (auto handler = typeid(T) in unpackHandlers) {
                 (*handler)(this, cast(void*)&object);
                 return this;
             }
