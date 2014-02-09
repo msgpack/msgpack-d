@@ -5,7 +5,7 @@ ifeq (,$(DMD))
 	DMD := dmd
 endif
 
-LIB    = libmsgpack.a
+LIB    = libmsgpack-d.a
 DFLAGS = -Isrc -m$(MODEL) -d -w
 
 ifeq (true, $(EnableReal))
