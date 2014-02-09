@@ -88,199 +88,162 @@ version(unittest) import std.file, std.c.string;
 @trusted:
 
 
-// Buffer implementations
+public:
+
+
+// Convenient functions
 
 
 /**
- * $(D RefBuffer) is a reference stored buffer for more efficient serialization
+ * Serializes $(D_PARAM args).
  *
- * Example:
- * -----
- * auto packer = packer(RefBuffer(16));  // threshold is 16
+ * Assumes single object if the length of $(D_PARAM args) == 1,
+ * otherwise array object.
  *
- * // packs data
+ * Params:
+ *  args = the contents to serialize.
  *
- * writev(fd, cast(void*)packer.buffer.vector.ptr, packer.buffer.vector.length);
- * -----
+ * Returns:
+ *  a serialized data.
  */
-struct RefBuffer
+ubyte[] pack(bool withFieldName = false, Args...)(in Args args)
 {
-  private:
-    static struct Chunk
-    {
-        ubyte[] data;  // storing serialized value
-        size_t  used;  // used size of data
+    auto packer = Packer(withFieldName);
+
+    static if (Args.length == 1)
+        packer.pack(args[0]);
+    else
+        packer.packArray(args);
+
+    return packer.stream.data;
+}
+
+
+unittest
+{
+    auto serialized = pack(false);
+
+    assert(serialized[0] == Format.FALSE);
+
+    auto deserialized = unpack(pack(1, true, "Foo"));
+
+    assert(deserialized.type == Value.Type.array);
+    assert(deserialized.via.array[0].type == Value.Type.unsigned);
+    assert(deserialized.via.array[1].type == Value.Type.boolean);
+    assert(deserialized.via.array[2].type == Value.Type.raw);
+}
+
+
+/**
+ * Deserializes $(D_PARAM buffer) using stream deserializer.
+ *
+ * Params:
+ *  buffer = the buffer to deserialize.
+ *
+ * Returns:
+ *  a $(D Unpacked) contains deserialized object.
+ *
+ * Throws:
+ *  UnpackException if deserialization doesn't succeed.
+ */
+Unpacked unpack(in ubyte[] buffer)
+{
+    auto unpacker = StreamingUnpacker(buffer);
+
+    if (!unpacker.execute())
+        throw new UnpackException("Deserialization failure");
+
+    return unpacker.unpacked;
+}
+
+
+/**
+ * Deserializes $(D_PARAM buffer) using direct-conversion deserializer.
+ *
+ * Assumes single object if the length of $(D_PARAM args) == 1,
+ * otherwise array object.
+ *
+ * Params:
+ *  buffer = the buffer to deserialize.
+ *  args   = the references of values to assign.
+ */
+void unpack(bool withFieldName = false, Args...)(in ubyte[] buffer, ref Args args)
+{
+    auto unpacker = Unpacker(buffer, buffer.length, withFieldName);
+
+    static if (Args.length == 1)
+        unpacker.unpack(args[0]);
+    else
+        unpacker.unpackArray(args);
+}
+
+
+/**
+ * Return value version
+ */
+Type unpack(Type, bool withFieldName = false)(in ubyte[] buffer)
+{
+    auto unpacker = Unpacker(buffer, buffer.length, withFieldName);
+
+    Type result;
+    unpacker.unpack(result);
+    return result;
+}
+
+
+unittest
+{
+    { // stream
+        auto result = unpack(pack(false));
+
+        assert(result.via.boolean == false);
     }
+    { // direct conversion
+        Tuple!(uint, string) result;
+        Tuple!(uint, string) test = tuple(1, "Hi!");
 
-    immutable size_t Threshold;
-    immutable size_t ChunkSize;
+        unpack(pack(test), result);
+        assert(result == test);
 
-    // for putCopy
-    Chunk[] chunks_;  // memory chunk for buffer
-    size_t  index_;   // index for cunrrent chunk
-
-    // for putRef
-    iovec[] vecList_;  // reference to large data or copied data.
-
-
-  public:
-    /**
-     * Constructs a buffer.
-     *
-     * Params:
-     *  threshold = the threshold of writing value or stores reference.
-     *  chunkSize = the default size of chunk for allocation.
-     */
-    @safe
-    this(in size_t threshold, in size_t chunkSize = 8192)
-    {
-        Threshold = threshold;
-        ChunkSize = chunkSize;
-
-        chunks_.length = 1;
-        chunks_[index_].data.length = chunkSize;
+        test.field[0] = 2;
+        test.field[1] = "Hey!";
+        unpack(pack(test.field[0], test.field[1]), result.field[0], result.field[1]);
+        assert(result == test);
     }
+    { // return value direct conversion
+        Tuple!(uint, string) test = tuple(1, "Hi!");
 
-
-    /**
-     * Returns the buffer contents that excluding references.
-     *
-     * Returns:
-     *  the non-contiguous copied contents.
-     */
-    @property @safe
-    nothrow ubyte[] data()
-    {
-        ubyte[] result;
-
-        foreach (ref chunk; chunks_)
-            result ~= chunk.data[0..chunk.used];
-
-        return result;
+        auto data = pack(test);
+        assert(data.unpack!(Tuple!(uint, string)) == test);
     }
-
-
-    /**
-     * Forwards to all buffer contents.
-     *
-     * Returns:
-     *  the array of iovec struct that stores references.
-     */
-    @property @safe
-    nothrow ref iovec[] vector()
-    {
-        return vecList_;
-    }
-
-
-    /**
-     * Writes the argument to buffer and stores the reference of writed content
-     * if the argument size is smaller than threshold,
-     * otherwise stores the reference of argument directly.
-     *
-     * Params:
-     *  value = the content to write.
-     */
-    @safe
-    void put(in ubyte value)
-    {
-        ubyte[1] values = [value];
-        putCopy(values);
-    }
-
-
-    /// ditto
-    @safe
-    void put(in ubyte[] value)
-    {
-        if (value.length < Threshold)
-            putCopy(value);
-        else
-            putRef(value);
-    }
-
-
-  private:
-    /*
-     * Stores the reference of $(D_PARAM value).
-     *
-     * Params:
-     *  value = the content to write.
-     */
-    @trusted
-    void putRef(in ubyte[] value)
-    {
-        vecList_.length += 1;
-        vecList_[$ - 1]  = iovec(cast(void*)value.ptr, value.length);
-    }
-
-
-    /*
-     * Writes $(D_PARAM value) to buffer and appends to its reference.
-     *
-     * Params:
-     *  value = the contents to write.
-     */
-    @trusted
-    void putCopy(in ubyte[] value)
-    {
-        /*
-         * Helper for expanding new space.
-         */
-        void expand(in size_t size)
+    { // serialize object as a Map
+        static class C
         {
-            const newSize = size < ChunkSize ? ChunkSize : size;
+            int num;
 
-            index_++;
-            chunks_.length = 1;
-            chunks_[index_].data.length = newSize;
+            this(int num) { this.num = num; }
         }
 
-        const size = value.length;
+        auto test = new C(10);
+        auto result = new C(100);
 
-        // lacks current chunk?
-        if (chunks_[index_].data.length - chunks_[index_].used < size)
-            expand(size);
-
-        const base = chunks_[index_].used;                     // start index
-        auto  data = chunks_[index_].data[base..base + size];  // chunk to write
-
-        data[] = value[];
-        chunks_[index_].used += size;
-
-        // Optimization for avoiding iovec allocation.
-        if (vecList_.length && data.ptr == (vecList_[$ - 1].iov_base +
-                                            vecList_[$ - 1].iov_len))
-            vecList_[$ - 1].iov_len += size;
-        else
-            putRef(data);
+        unpack!(true)(pack!(true)(test), result);
+        assert(result.num == 10, "Unpacking with field names failed");
     }
 }
 
 
 unittest
 {
-    static assert(isOutputRange!(RefBuffer, ubyte) &&
-                  isOutputRange!(RefBuffer, ubyte[]));
-
-    auto buffer = RefBuffer(2, 4);
-
-    ubyte[] tests = [1, 2];
-    foreach (v; tests)
-        buffer.put(v);
-    buffer.put(tests);
-
-    assert(buffer.data == tests, "putCopy failed");
-
-    iovec[] vector = buffer.vector;
-    ubyte[] result;
-
-    assert(vector.length == 2, "Optimization failed");
-
-    foreach (v; vector)
-        result ~= (cast(ubyte*)v.iov_base)[0..v.iov_len];
-
-    assert(result == tests ~ tests);
+    // unittest for https://github.com/msgpack/msgpack-d/issues/8
+    foreach (Type; TypeTuple!(byte, short, int, long)) {
+        foreach (i; [-33, -20, -1, 0, 1, 20, 33]) {
+            Type a = cast(Type)i;
+            Type b;
+            unpack(pack(a), b);
+            assert(a == b);
+        }
+    }
 }
 
 
@@ -1037,9 +1000,18 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
 }
 
 
+/// Default serializer
 alias PackerImpl!(Appender!(ubyte[])) Packer;  // should be pure struct?
 
 
+/**
+ * Register a serialization handler for $(D_PARAM T) type
+ *
+ * Example:
+ * -----
+ * registerPackHandler!(Foo, fooPackHandler);
+ * -----
+ */
 void registerPackHandler(T, alias Handler, Stream = Appender!(ubyte[]))()
 {
     PackerImpl!(Stream).registerHandler!(T, Handler);
@@ -1059,6 +1031,202 @@ void registerPackHandler(T, alias Handler, Stream = Appender!(ubyte[]))()
 PackerImpl!(Stream) packer(Stream)(Stream stream, bool withFieldName = false)
 {
     return typeof(return)(stream, withFieldName);
+}
+
+
+// Buffer implementations
+
+
+/**
+ * $(D RefBuffer) is a reference stored buffer for more efficient serialization
+ *
+ * Example:
+ * -----
+ * auto packer = packer(RefBuffer(16));  // threshold is 16
+ *
+ * // packs data
+ *
+ * writev(fd, cast(void*)packer.buffer.vector.ptr, packer.buffer.vector.length);
+ * -----
+ */
+struct RefBuffer
+{
+  private:
+    static struct Chunk
+    {
+        ubyte[] data;  // storing serialized value
+        size_t  used;  // used size of data
+    }
+
+    immutable size_t Threshold;
+    immutable size_t ChunkSize;
+
+    // for putCopy
+    Chunk[] chunks_;  // memory chunk for buffer
+    size_t  index_;   // index for cunrrent chunk
+
+    // for putRef
+    iovec[] vecList_;  // reference to large data or copied data.
+
+
+  public:
+    /**
+     * Constructs a buffer.
+     *
+     * Params:
+     *  threshold = the threshold of writing value or stores reference.
+     *  chunkSize = the default size of chunk for allocation.
+     */
+    @safe
+    this(in size_t threshold, in size_t chunkSize = 8192)
+    {
+        Threshold = threshold;
+        ChunkSize = chunkSize;
+
+        chunks_.length = 1;
+        chunks_[index_].data.length = chunkSize;
+    }
+
+
+    /**
+     * Returns the buffer contents that excluding references.
+     *
+     * Returns:
+     *  the non-contiguous copied contents.
+     */
+    @property @safe
+    nothrow ubyte[] data()
+    {
+        ubyte[] result;
+
+        foreach (ref chunk; chunks_)
+            result ~= chunk.data[0..chunk.used];
+
+        return result;
+    }
+
+
+    /**
+     * Forwards to all buffer contents.
+     *
+     * Returns:
+     *  the array of iovec struct that stores references.
+     */
+    @property @safe
+    nothrow ref iovec[] vector()
+    {
+        return vecList_;
+    }
+
+
+    /**
+     * Writes the argument to buffer and stores the reference of writed content
+     * if the argument size is smaller than threshold,
+     * otherwise stores the reference of argument directly.
+     *
+     * Params:
+     *  value = the content to write.
+     */
+    @safe
+    void put(in ubyte value)
+    {
+        ubyte[1] values = [value];
+        putCopy(values);
+    }
+
+
+    /// ditto
+    @safe
+    void put(in ubyte[] value)
+    {
+        if (value.length < Threshold)
+            putCopy(value);
+        else
+            putRef(value);
+    }
+
+
+  private:
+    /*
+     * Stores the reference of $(D_PARAM value).
+     *
+     * Params:
+     *  value = the content to write.
+     */
+    @trusted
+    void putRef(in ubyte[] value)
+    {
+        vecList_.length += 1;
+        vecList_[$ - 1]  = iovec(cast(void*)value.ptr, value.length);
+    }
+
+
+    /*
+     * Writes $(D_PARAM value) to buffer and appends to its reference.
+     *
+     * Params:
+     *  value = the contents to write.
+     */
+    @trusted
+    void putCopy(in ubyte[] value)
+    {
+        /*
+         * Helper for expanding new space.
+         */
+        void expand(in size_t size)
+        {
+            const newSize = size < ChunkSize ? ChunkSize : size;
+
+            index_++;
+            chunks_.length = 1;
+            chunks_[index_].data.length = newSize;
+        }
+
+        const size = value.length;
+
+        // lacks current chunk?
+        if (chunks_[index_].data.length - chunks_[index_].used < size)
+            expand(size);
+
+        const base = chunks_[index_].used;                     // start index
+        auto  data = chunks_[index_].data[base..base + size];  // chunk to write
+
+        data[] = value[];
+        chunks_[index_].used += size;
+
+        // Optimization for avoiding iovec allocation.
+        if (vecList_.length && data.ptr == (vecList_[$ - 1].iov_base +
+                                            vecList_[$ - 1].iov_len))
+            vecList_[$ - 1].iov_len += size;
+        else
+            putRef(data);
+    }
+}
+
+
+unittest
+{
+    static assert(isOutputRange!(RefBuffer, ubyte) &&
+                  isOutputRange!(RefBuffer, ubyte[]));
+
+    auto buffer = RefBuffer(2, 4);
+
+    ubyte[] tests = [1, 2];
+    foreach (v; tests)
+        buffer.put(v);
+    buffer.put(tests);
+
+    assert(buffer.data == tests, "putCopy failed");
+
+    iovec[] vector = buffer.vector;
+    ubyte[] result;
+
+    assert(vector.length == 2, "Optimization failed");
+
+    foreach (v; vector)
+        result ~= (cast(ubyte*)v.iov_base)[0..v.iov_len];
+
+    assert(result == tests ~ tests);
 }
 
 
@@ -2597,6 +2765,14 @@ struct Unpacker
 }
 
 
+/**
+ * Register a deserialization handler for $(D_PARAM T) type
+ *
+ * Example:
+ * -----
+ * registerUnackHandler!(Foo, fooUnackHandler);
+ * -----
+ */
 void registerUnpackHandler(T, alias Handler)()
 {
     Unpacker.registerHandler!(T, Handler);
@@ -4401,166 +4577,7 @@ pure void onInvalidType()
 public:
 
 
-// Convenient functions
-
-
-/**
- * Serializes $(D_PARAM args).
- *
- * Assumes single object if the length of $(D_PARAM args) == 1,
- * otherwise array object.
- *
- * Params:
- *  args = the contents to serialize.
- *
- * Returns:
- *  a serialized data.
- */
-ubyte[] pack(bool withFieldName = false, Args...)(in Args args)
-{
-    auto packer = Packer(withFieldName);
-
-    static if (Args.length == 1)
-        packer.pack(args[0]);
-    else
-        packer.packArray(args);
-
-    return packer.stream.data;
-}
-
-
-unittest
-{
-    auto serialized = pack(false);
-
-    assert(serialized[0] == Format.FALSE);
-
-    auto deserialized = unpack(pack(1, true, "Foo"));
-
-    assert(deserialized.type == Value.Type.array);
-    assert(deserialized.via.array[0].type == Value.Type.unsigned);
-    assert(deserialized.via.array[1].type == Value.Type.boolean);
-    assert(deserialized.via.array[2].type == Value.Type.raw);
-}
-
-
-/**
- * Deserializes $(D_PARAM buffer) using stream deserializer.
- *
- * Params:
- *  buffer = the buffer to deserialize.
- *
- * Returns:
- *  a $(D Unpacked) contains deserialized object.
- *
- * Throws:
- *  UnpackException if deserialization doesn't succeed.
- */
-Unpacked unpack(in ubyte[] buffer)
-{
-    auto unpacker = StreamingUnpacker(buffer);
-
-    if (!unpacker.execute())
-        throw new UnpackException("Deserialization failure");
-
-    return unpacker.unpacked;
-}
-
-
-/**
- * Deserializes $(D_PARAM buffer) using direct-conversion deserializer.
- *
- * Assumes single object if the length of $(D_PARAM args) == 1,
- * otherwise array object.
- *
- * Params:
- *  buffer = the buffer to deserialize.
- *  args   = the references of values to assign.
- */
-void unpack(bool withFieldName = false, Args...)(in ubyte[] buffer, ref Args args)
-{
-    auto unpacker = Unpacker(buffer, buffer.length, withFieldName);
-
-    static if (Args.length == 1)
-        unpacker.unpack(args[0]);
-    else
-        unpacker.unpackArray(args);
-}
-
-
-/**
- * Return value version
- */
-Type unpack(Type, bool withFieldName = false)(in ubyte[] buffer)
-{
-    auto unpacker = Unpacker(buffer, buffer.length, withFieldName);
-
-    Type result;
-    unpacker.unpack(result);
-    return result;
-}
-
-
-unittest
-{
-    { // stream
-        auto result = unpack(pack(false));
-
-        assert(result.via.boolean == false);
-    }
-    { // direct conversion
-        Tuple!(uint, string) result;
-        Tuple!(uint, string) test = tuple(1, "Hi!");
-
-        unpack(pack(test), result);
-        assert(result == test);
-
-        test.field[0] = 2;
-        test.field[1] = "Hey!";
-        unpack(pack(test.field[0], test.field[1]), result.field[0], result.field[1]);
-        assert(result == test);
-    }
-    { // return value direct conversion
-        Tuple!(uint, string) test = tuple(1, "Hi!");
-
-        auto data = pack(test);
-        assert(data.unpack!(Tuple!(uint, string)) == test);
-    }
-    { // serialize object as a Map
-        static class C
-        {
-            int num;
-
-            this(int num) { this.num = num; }
-        }
-
-        auto test = new C(10);
-        auto result = new C(100);
-
-        unpack!(true)(pack!(true)(test), result);
-        assert(result.num == 10, "Unpacking with field names failed");
-    }
-}
-
-
-unittest
-{
-    // unittest for https://github.com/msgpack/msgpack-d/issues/8
-    foreach (Type; TypeTuple!(byte, short, int, long)) {
-        foreach (i; [-33, -20, -1, 0, 1, 20, 33]) {
-            Type a = cast(Type)i;
-            Type b;
-            unpack(pack(a), b);
-            assert(a == b);
-        }
-    }
-}
-
-
-// Utilities template
-
-
-/**
+/*
  * Handy helper for creating MessagePackable object.
  *
  * toMsgpack / fromMsgpack are special methods for serialization / deserialization.
