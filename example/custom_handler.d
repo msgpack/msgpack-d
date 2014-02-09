@@ -10,7 +10,7 @@ class C : A
     this(int n) { num = n; }
 }
 
-void cPackHandler(Packer)(ref Packer p, ref C c)
+void cPackHandler(ref Packer p, ref C c)
 {
     writeln("Pack C: ", c.num);
     p.pack(c.num);
@@ -22,7 +22,7 @@ void cUnpackHandler(ref Unpacker u, ref C c)
     u.unpack(c.num);
 }
 
-void vPackHandler(Packer)(ref Packer p, ref Variant v)
+void vPackHandler(ref Packer p, ref Variant v)
 {
     writeln("pack Variant: ", v);
     p.pack(v.get!bool);
