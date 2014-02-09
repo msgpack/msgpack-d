@@ -30,12 +30,11 @@ msgpack-d is only one file. Please copy src/msgpack.d onto your project or use d
 
 # Usage
 
-Actual codes are in the example directory,
-and DDoc is [here](http://msgpack.github.io/msgpack-d/)
+Actual codes are in the example directory and DDoc is [here](http://msgpack.github.io/msgpack-d/)
 
 ## pack / unpack
 
-msgpack-d is very simple to use:
+msgpack-d is very simple to use. `pack` for serialization and `unpack` for deserialization:
 
 ```D
 import std.file;
@@ -74,7 +73,7 @@ Use `@nonPacked` attribute.
 struct Foo
 {
     string f1;
-    @nonPacked int f2;  // pack / unpack ignore f2
+    @nonPacked int f2;  // pack / unpack ignore f2 field
 }
 ```
 
