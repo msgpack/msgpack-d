@@ -18,14 +18,22 @@ In addition, Unpacker raises exception if loss of precision occures.
 
 ## Limitations
 
-* No subclass through super class reference serialization(API design phase)
 * No circular references support
 
 # Install
 
-msgpack-d is only one file. Please copy src/msgpack.d onto your project.
+msgpack-d is only one file. Please copy src/msgpack.d onto your project or use dub.
+
+```sh
+% dub install msgpack-d
+```
 
 # Usage
+
+Actual codes are in the example directory,
+and DDoc is [here](http://msgpack.github.io/msgpack-d/)
+
+## pack / unpack
 
 msgpack-d is very simple to use:
 
@@ -58,7 +66,57 @@ void main()
 }
 ```
 
-See the example directory for more samples.
+### Skip specific field in `pack` / `unpack`.
+
+Use `@nonPacked` attribute.
+
+```d
+struct Foo
+{
+    string f1;
+    @nonPacked int f2;  // pack / unpack ignore f2
+}
+```
+
+### Use own (de)serialization routine for class and struct
+
+msgpack-d provide `registerPackHandler` / `registerUnpackHandler` functions.
+It is useful for derived class through reference to base class serialization.
+
+```d
+class A { }
+class C : A 
+{
+    int num;
+    // ...
+}
+
+void cPackHandler(ref Packer p, ref C c)
+{
+    p.pack(c.num);
+}
+
+void cUnpackHandler(ref Unpacker u, ref C c)
+{
+    u.unpack(c.num);
+}
+
+// Set cPackHandler and cUnpackHandler for C instance
+registerPackHandler!(C, cPackHandler);
+registerUnpackHandler!(C, cUnpackHandler);
+
+// can (de)serialize C instance via base class reference
+A c = new C(1000);
+auto data = pack(c);
+A c2 = new C(1);
+unpack(data, c2); // c2.num is 1000
+```
+
+## Packer / Unpacker / StreaminUnpacker
+
+These classes are used in `pack` and `unpack` internally.
+
+See DDoc of [Packer](http://msgpack.github.io/msgpack-d/#Packer), [Unpacker](http://msgpack.github.io/msgpack-d/#Unpacker) and [StreamingUnpacker](http://msgpack.github.io/msgpack-d/#StreamingUnpacker) for more detail.
 
 # Link
 
