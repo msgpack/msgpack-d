@@ -8,15 +8,16 @@ MessagePack for D is a pure D implementation of MessagePack.
 
 # Features
 
-* Small and High performance
+* Small size and High performance
 * Zero copy serialization / deserialization
 * Stream deserializer / Direct-conversion deserializer
-* Support D features(Range, Tuple, real type)
+* Supports D features (Ranges, Tuples, real type)
 
-real type is D only. Don't use real-type to communicate other languages.
-In addition, Unpacker raises exception if loss of precision occures.
+Note: The `real` type is only supported in D.
+Don't use the `real` type when communicating with other programming languages.
+Note that `Unpacker` will raise an exception if a loss of precision occurs.
 
-## Limitations
+## Current Limitations
 
 * No circular references support
 
@@ -30,11 +31,13 @@ msgpack-d is only one file. Please copy src/msgpack.d onto your project or use d
 
 # Usage
 
-Actual codes are in the example directory and DDoc is [here](http://msgpack.github.io/msgpack-d/)
+Example code can be found in the `example` directory.
+
+The documentation can be found [here](http://msgpack.github.io/msgpack-d/)
 
 ## pack / unpack
 
-msgpack-d is very simple to use. `pack` for serialization and `unpack` for deserialization:
+msgpack-d is very simple to use. Use `pack` for serialization, and `unpack` for deserialization:
 
 ```D
 import std.file;
@@ -52,10 +55,10 @@ void main()
     // write data to a file
     write("file.dat", inData);
 
-    // read data from file
+    // read data from a file
     ubyte[] outData = cast(ubyte[])read("file.dat");
 
-    // unserialize data
+    // unserialize the data
     S target = outData.unpack!S();
 
     // verify data is the same
@@ -65,74 +68,84 @@ void main()
 }
 ```
 
-### Skip specific field in `pack` / `unpack`.
+### Feature: Skip serialization/deserialization of a specific field.
 
-Use `@nonPacked` attribute.
+Use the `@nonPacked` attribute:
 
 ```d
-struct Foo
+struct User
 {
-    string f1;
-    @nonPacked int f2;  // pack / unpack ignore f2 field
+    string name;
+    @nonPacked int level;  // pack / unpack will ignore the 'level' field
 }
 ```
 
-### Use own (de)serialization routine for class and struct
+### Feature: Use your own serialization/deserialization routines for custom class and struct types.
 
-msgpack-d provide `registerPackHandler` / `registerUnpackHandler` functions.
-It is useful for derived class through reference to base class serialization.
+msgpack-d provides the functions `registerPackHandler` / `registerUnpackHandler` to allow you
+to use custom routines during the serialization or deserialization of user-defined class and struct types.
+This feature is especially useful when serializing a derived class object when that object is statically
+typed as a base class object.
+
+For example:
 
 ```d
-class A { }
-class C : A 
+class Document { }
+class XmlDocument : Document
 {
-    int num;
-    // ...
+    this() { }
+    this(string name) { this.name = name; }
+    string name;
 }
 
-void cPackHandler(ref Packer p, ref C c)
+void xmlPackHandler(ref Packer p, ref XmlDocument xml)
 {
-    p.pack(c.num);
+    p.pack(xml.name);
 }
 
-void cUnpackHandler(ref Unpacker u, ref C c)
+void xmlUnpackHandler(ref Unpacker u, ref XmlDocument xml)
 {
-    u.unpack(c.num);
+    u.unpack(xml.name);
 }
 
-// Set cPackHandler and cUnpackHandler for C instance
-registerPackHandler!(C, cPackHandler);
-registerUnpackHandler!(C, cUnpackHandler);
+void main()
+{
+    /// Register the 'xmlPackHandler' and 'xmlUnpackHandler' routines for XmlDocument object instances.
+    registerPackHandler!(XmlDocument, xmlPackHandler);
+    registerUnpackHandler!(XmlDocument, xmlUnpackHandler);
 
-// can (de)serialize C instance via base class reference
-A c = new C(1000);
-auto data = pack(c);
-A c2 = new C(1);
-unpack(data, c2); // c2.num is 1000
+    /// Nowe we can serialize/deserialize XmlDocument object instances via a base class reference.
+    Document doc = new XmlDocument("test.xml");
+    auto data = pack(doc);
+    XmlDocument xml = unpack!XmlDocument(data);
+    assert(xml.name == "test.xml");  // xml.name is "test.xml"
+}
 ```
 
-## Packer / Unpacker / StreaminUnpacker
+## The PackerImpl / Unpacker / StreamingUnpacker types
 
-These classes are used in `pack` and `unpack` internally.
+These types are used by the `pack` and `unpack` functions.
 
-See DDoc of [Packer](http://msgpack.github.io/msgpack-d/#Packer), [Unpacker](http://msgpack.github.io/msgpack-d/#Unpacker) and [StreamingUnpacker](http://msgpack.github.io/msgpack-d/#StreamingUnpacker) for more detail.
+See the documentation of [PackerImpl](http://msgpack.github.io/msgpack-d/#PackerImpl), [Unpacker](http://msgpack.github.io/msgpack-d/#Unpacker) and [StreamingUnpacker](http://msgpack.github.io/msgpack-d/#StreamingUnpacker) for more details.
 
-# Link
+# Links
 
 * [The MessagePack Project](http://msgpack.org/)
 
-  MessagePack official site
+  The official MessagePack protocol website.
 
-* [MessagePack's issues](https://github.com/msgpack/msgpack-d/issues)
+* [msgpack-d's issue tracker](https://github.com/msgpack/msgpack-d/issues)
 
-  Github issue
+  Use this issue tracker to review and file bugs in msgpack-d.
 
 * [MessagePack's Github](http://github.com/msgpack/)
 
-  Other language versions are here
+  Other language bindings and implementations of the msgpack protocol can be found here.
 
 # Copyright
 
     Copyright (c) 2010- Masahiro Nakagawa
 
-Distributed under the Boost Software License, Version 1.0.
+# License
+
+    Distributed under the [Boost Software License, Version 1.0](http://www.boost.org/users/license.html).
