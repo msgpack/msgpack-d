@@ -23,7 +23,8 @@ Note that `Unpacker` will raise an exception if a loss of precision occurs.
 
 # Install
 
-msgpack-d is only one file. Please copy src/msgpack.d onto your project or use dub.
+msgpack-d is implemented as a single module. Either copy `src/msgpack.d` to your project
+or use dub to add it as a dependency:
 
 ```sh
 % dub install msgpack-d
@@ -110,11 +111,13 @@ void xmlUnpackHandler(ref Unpacker u, ref XmlDocument xml)
 
 void main()
 {
-    /// Register the 'xmlPackHandler' and 'xmlUnpackHandler' routines for XmlDocument object instances.
+    /// Register the 'xmlPackHandler' and 'xmlUnpackHandler' routines for
+    /// XmlDocument object instances.
     registerPackHandler!(XmlDocument, xmlPackHandler);
     registerUnpackHandler!(XmlDocument, xmlUnpackHandler);
 
-    /// Nowe we can serialize/deserialize XmlDocument object instances via a base class reference.
+    /// Now we can serialize/deserialize XmlDocument object instances via a
+    /// base class reference.
     Document doc = new XmlDocument("test.xml");
     auto data = pack(doc);
     XmlDocument xml = unpack!XmlDocument(data);
@@ -148,4 +151,4 @@ See the documentation of [PackerImpl](http://msgpack.github.io/msgpack-d/#Packer
 
 # License
 
-    Distributed under the [Boost Software License, Version 1.0](http://www.boost.org/users/license.html).
+Distributed under the [Boost Software License, Version 1.0](http://www.boost.org/users/license.html).
