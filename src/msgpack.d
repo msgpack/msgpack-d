@@ -3289,14 +3289,26 @@ struct Value
     {
         alias typeof(T.init[0]) V;
 
-        if (type == Type.nil)
-            return null;
+        if (type == Type.nil) {
+            static if (isDynamicArray!T) {
+                return null;
+            } else {
+                return T.init;
+            }
+        }
 
         static if (isByte!V || isSomeChar!V) {
             if (type != Type.raw)
                 onCastError();
 
-            return cast(T)via.raw;
+            static if (isDynamicArray!T) {
+                return cast(T)via.raw;
+            } else {
+                if (via.raw.length != T.length)
+                    onCastError();
+
+                return cast(T)(via.raw[0 .. T.length]);
+            }
         } else {
             if (type != Type.array)
                 onCastError();
@@ -3639,10 +3651,11 @@ unittest
     value = Value(cast(ubyte[])[72, 105, 33]);
     other = Value(cast(ubyte[])[72, 105, 33]);
 
-    assert(value             == other);
-    assert(value.type        == Value.Type.raw);
-    assert(value.as!(string) == "Hi!");
-    assert(other             == cast(ubyte[])[72, 105, 33]);
+    assert(value               == other);
+    assert(value.type          == Value.Type.raw);
+    assert(value.as!(string)   == "Hi!");
+    assert(value.as!(ubyte[3]) == [72, 105, 33]);
+    assert(other               == cast(ubyte[])[72, 105, 33]);
 
     // raw with string
     value = Value("hello");
