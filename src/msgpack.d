@@ -3588,6 +3588,38 @@ struct Value
 
         return via.raw == cast(ubyte[])other;
     }
+
+    @trusted
+    hash_t toHash() const nothrow
+    {
+        static hash_t getHash(T)(T* v) @safe nothrow
+        {
+            return typeid(T).getHash(v);
+        }
+
+        final switch (type) {
+        case Type.nil:      return 0;
+        case Type.boolean:  return getHash(&via.boolean);
+        case Type.unsigned: return getHash(&via.uinteger);
+        case Type.signed:   return getHash(&via.integer);
+        case Type.floating: return getHash(&via.floating);
+        case Type.raw:      return getHash(&via.raw);
+        case Type.array:
+            hash_t ret;
+            foreach (elem; via.array)
+                ret ^= elem.toHash();
+            return ret;
+        case Type.map:
+            try {
+                hash_t ret;
+                foreach (key, value; via.map) {
+                    ret ^= key.toHash();
+                    ret ^= value.toHash();
+                }
+                return ret;
+            } catch assert(0);
+        }
+    }
 }
 
 
