@@ -4091,18 +4091,13 @@ struct StreamingUnpacker
         /*
          * Helper for container deserialization
          */
-        bool startContainer(string Type)(ContainerElement type, size_t length)
+        void startContainer(string Type)(ContainerElement type, size_t length)
         {
             mixin("callback" ~ Type ~ "((*stack)[top].value, length);");
-
-            if (length == 0)
-                return false;
 
             (*stack)[top].type  = type;
             (*stack)[top].count = length;
             (*stack).length     = ++top + 1;
-
-            return true;
         }
 
         // non-deserialized data is nothing
@@ -4126,15 +4121,25 @@ struct StreamingUnpacker
                     cur++;
                     continue;
                 } else if (0x90 <= header && header <= 0x9f) {  // fix array
-                    if (!startContainer!"Array"(ContainerElement.ARRAY_ITEM, header & 0x0f))
+                    size_t length = header & 0x0f;
+                    if (length == 0) {
+                        callbackArray(obj, 0);
                         goto Lpush;
-                    cur++;
-                    continue;
+                    } else {
+                        startContainer!"Array"(ContainerElement.ARRAY_ITEM, length);
+                        cur++;
+                        continue;
+                    }
                 } else if (0x80 <= header && header <= 0x8f) {  // fix map
-                    if (!startContainer!"Map"(ContainerElement.MAP_KEY, header & 0x0f))
+                    size_t length = header & 0x0f;
+                    if (length == 0) {
+                        callbackMap(obj, 0);
                         goto Lpush;
-                    cur++;
-                    continue;
+                    } else {
+                        startContainer!"Map"(ContainerElement.MAP_KEY, length);
+                        cur++;
+                        continue;
+                    }
                 } else {
                     switch (header) {
                     case Format.UINT8, Format.UINT16, Format.UINT32, Format.UINT64,
@@ -4277,33 +4282,49 @@ struct StreamingUnpacker
                     cur++;
                     goto Lstart;
                 case State.ARRAY16:
-                    if (!startContainer!"Array"(ContainerElement.ARRAY_ITEM,
-                                                load16To!size_t(buffer_[base..base + trail])))
+                    size_t length = load16To!size_t(buffer_[base..base + trail]);
+                    if (length == 0) {
+                        callbackArray(obj, 0);
                         goto Lpush;
-                    state = State.HEADER;
-                    cur++;
-                    continue;
+                    } else {
+                        startContainer!"Array"(ContainerElement.ARRAY_ITEM, length);
+                        state = State.HEADER;
+                        cur++;
+                        continue;
+                    }
                 case State.ARRAY36:
-                    if (!startContainer!"Array"(ContainerElement.ARRAY_ITEM,
-                                                load32To!size_t(buffer_[base..base + trail])))
+                    size_t length = load32To!size_t(buffer_[base..base + trail]);
+                    if (length == 0) {
+                        callbackArray(obj, 0);
                         goto Lpush;
-                    state = State.HEADER;
-                    cur++;
-                    continue;
+                    } else {
+                        startContainer!"Array"(ContainerElement.ARRAY_ITEM, length);
+                        state = State.HEADER;
+                        cur++;
+                        continue;
+                    }
                 case State.MAP16:
-                    if (!startContainer!"Map"(ContainerElement.MAP_KEY,
-                                              load16To!size_t(buffer_[base..base + trail])))
+                    size_t length = load16To!size_t(buffer_[base..base + trail]);
+                    if (length == 0) {
+                        callbackMap(obj, 0);
                         goto Lpush;
-                    state = State.HEADER;
-                    cur++;
-                    continue;
+                    } else {
+                        startContainer!"Map"(ContainerElement.MAP_KEY, length);
+                        state = State.HEADER;
+                        cur++;
+                        continue;
+                    }
                 case State.MAP32:
-                    if (!startContainer!"Map"(ContainerElement.MAP_KEY,
-                                              load32To!size_t(buffer_[base..base + trail])))
+                    size_t length = load32To!size_t(buffer_[base..base + trail]);
+                    if (length == 0) {
+                        callbackMap(obj, 0);
                         goto Lpush;
-                    state = State.HEADER;
-                    cur++;
-                    continue;
+                    } else {
+                        startContainer!"Map"(ContainerElement.MAP_KEY, length);
+                        state = State.HEADER;
+                        cur++;
+                        continue;
+                    }
                 case State.HEADER:
                     break;
                 }
