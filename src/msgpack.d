@@ -344,7 +344,7 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
      * Params:
      *  withFieldName = serialize class / struct with field name
      */
-    this(bool withFieldName = false)
+    this(bool withFieldName)
     {
         withFieldName_ = withFieldName;
     }
@@ -3145,7 +3145,7 @@ struct Value
      *  type  = the type of value.
      */
     @safe
-    this(Type type = Type.nil)
+    this(Type type)
     {
         this.type = type;
     }
