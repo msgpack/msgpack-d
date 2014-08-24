@@ -4677,7 +4677,7 @@ mixin template MessagePackable(Members...)
             if (withFieldName) {
                 packer.beginMap(this.tupleof.length);
                 foreach (i, member; this.tupleof) {
-                    pack(getFieldName!(typeof(this), i));
+                    packer.pack(getFieldName!(typeof(this), i));
                     packer.pack(member);
                 }
             } else {
