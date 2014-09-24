@@ -851,7 +851,7 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
             foreach (f; object.field)
                 pack(f);
         } else {  // simple struct
-            if (auto handler = typeid(T) in packHandlers) {
+            if (auto handler = typeid(Unqual!T) in packHandlers) {
                 (*handler)(this, cast(void*)&object);
                 return this;
             }
