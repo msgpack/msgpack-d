@@ -4497,7 +4497,7 @@ unittest
 private:
 
 
-/*
+/**
  * Sets value type and value.
  *
  * Params:
@@ -4627,7 +4627,7 @@ unittest
 private:
 
 
-/*
+/**
  * A callback for type-mismatched error in cast conversion.
  */
 @safe
@@ -4650,7 +4650,7 @@ pure void onInvalidType()
 public:
 
 
-/*
+/**
  * Handy helper for creating MessagePackable object.
  *
  * toMsgpack / fromMsgpack are special methods for serialization / deserialization.
@@ -4859,7 +4859,7 @@ private:
 // Common and system dependent operations
 
 
-/*
+/**
  * MessagePack type-information format
  *
  * See_Also:
@@ -4918,7 +4918,7 @@ enum Format : ubyte
 }
 
 
-/*
+/**
  * For float type serialization / deserialization
  */
 union _f
@@ -4928,7 +4928,7 @@ union _f
 }
 
 
-/*
+/**
  * For double type serialization / deserialization
  */
 union _d
@@ -4938,7 +4938,7 @@ union _d
 }
 
 
-/*
+/**
  * For real type serialization / deserialization
  *
  * 80-bit real is padded to 12 bytes(Linux) and 16 bytes(Mac).
@@ -4958,7 +4958,7 @@ union _r
 enum RealSize = 10;  // Real size is 80bit
 
 
-/*
+/**
  * Detects whether $(D_PARAM T) is a built-in byte type.
  */
 template isByte(T)
@@ -4979,7 +4979,7 @@ unittest
 }
 
 
-/*
+/**
  * Gets asterisk string from pointer type
  */
 template AsteriskOf(T)
