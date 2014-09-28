@@ -38,6 +38,7 @@ import std.stdio;
 import std.traits;
 import std.typecons;
 import std.typetuple;
+import std.container;
 
 // for RefBuffer
 version(Posix)
@@ -671,7 +672,8 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
 
 
     /// ditto
-    ref PackerImpl pack(T)(in T array) if (isArray!T)
+    ref PackerImpl pack(T)(in T array) if (isArray!T ||
+                                           isInstanceOf!(Array, T))
     {
         alias typeof(T.init[0]) U;
 
@@ -709,8 +711,16 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
             stream_.put(raw);
         } else {
             beginArray(array.length);
-            foreach (elem; array)
-                pack(elem);
+            static if (isInstanceOf!(Array, T))
+            {
+                for (size_t i = 0; i < array.length; i++)
+                    pack(array[i]);
+            }
+            else
+            {
+                foreach (elem; array)
+                    pack(elem);
+            }
         }
 
         return this;
@@ -835,7 +845,8 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
 
     /// ditto
     @trusted
-    ref PackerImpl pack(T)(auto ref T object) if (is(Unqual!T == struct))
+    ref PackerImpl pack(T)(auto ref T object) if (is(Unqual!T == struct) &&
+                                                  !isInstanceOf!(Array, T))
     {
         static if (hasMember!(T, "toMsgpack"))
         {
@@ -2233,7 +2244,9 @@ struct Unpacker
      *  UnpackException when doesn't read from buffer or precision loss occurs and
      *  MessagePackException when $(D_PARAM T) type doesn't match serialized type.
      */
-    ref Unpacker unpack(T)(ref T array) if (isArray!T && !is(Unqual!T == enum))
+    ref Unpacker unpack(T)(ref T array) if ((isArray!T ||
+                                             isInstanceOf!(Array, T)) &&
+                                            !is(Unqual!T == enum))
     {
         alias typeof(T.init[0]) U;
 
@@ -3285,7 +3298,9 @@ struct Value
 
     /// ditto
     @property @trusted
-    T as(T)() if (isArray!T && !is(Unqual!T == enum))
+    T as(T)() if ((isArray!T ||
+                   isInstanceOf!(Array, T)) &&
+                  !is(Unqual!T == enum))
     {
         alias typeof(T.init[0]) V;
 
