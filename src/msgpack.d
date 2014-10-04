@@ -711,16 +711,8 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
             stream_.put(raw);
         } else {
             beginArray(array.length);
-            static if (isInstanceOf!(Array, T))
-            {
-                for (size_t i = 0; i < array.length; i++)
-                    pack(array[i]);
-            }
-            else
-            {
-                foreach (elem; array)
-                    pack(elem);
-            }
+            foreach (elem; array)
+                pack(elem);
         }
 
         return this;
