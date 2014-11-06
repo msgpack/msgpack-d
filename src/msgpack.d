@@ -83,7 +83,7 @@ static if (real.sizeof == double.sizeof) {
     import std.numeric;
 }
 
-version(unittest) import std.file, std.c.string;
+version(unittest) import std.file, core.stdc.string;
 
 
 @trusted:
