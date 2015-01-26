@@ -3807,6 +3807,8 @@ unittest
  */
 struct Unpacked
 {
+    import std.conv : text;
+
     Value value;  /// deserialized value
 
     alias value this;
@@ -3847,6 +3849,7 @@ struct Unpacked
     @property @trusted
     size_t length()
     {
+        debug enforce(value.type == Value.Type.array, "lenght is called with non array object. type = " ~ text(value.type));
         return value.via.array.length;
     }
 
@@ -3860,6 +3863,7 @@ struct Unpacked
     @property @trusted
     ref Value front()
     {
+        debug enforce(value.type == Value.Type.array, "front is called with non array object. type = " ~ text(value.type));
         return value.via.array.front;
     }
 
@@ -3870,6 +3874,7 @@ struct Unpacked
     @trusted
     void popFront()
     {
+        debug enforce(value.type == Value.Type.array, "popFront is called with non array object. type = " ~ text(value.type));
         value.via.array.popFront();
     }
 
@@ -3880,8 +3885,9 @@ struct Unpacked
      *  the deserialized $(D Value) at $(D_PARAM n) position.
      */
     @trusted
-    nothrow ref Value opIndex(size_t n)
+    ref Value opIndex(size_t n)
     {
+        debug enforce(value.type == Value.Type.array, "opIndex is called with non array object. type = " ~ text(value.type));
         return value.via.array[n];
     }
 
@@ -3898,6 +3904,7 @@ struct Unpacked
     @trusted
     Value[] opSlice(size_t from, size_t to)
     {
+        debug enforce(value.type == Value.Type.array, "opSlice is called with non array object. type = " ~ text(value.type));
         return value.via.array[from..to];
     }
 
