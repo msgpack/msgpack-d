@@ -38,6 +38,7 @@ import std.stdio;
 import std.traits;
 import std.typecons;
 import std.typetuple;
+import std.container;
 
 // for RefBuffer
 version(Posix)
@@ -82,7 +83,7 @@ static if (real.sizeof == double.sizeof) {
     import std.numeric;
 }
 
-version(unittest) import std.file, std.c.string;
+version(unittest) import std.file, core.stdc.string;
 
 
 @trusted:
@@ -671,7 +672,8 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
 
 
     /// ditto
-    ref PackerImpl pack(T)(in T array) if (isArray!T)
+    ref PackerImpl pack(T)(in T array) if (isArray!T ||
+                                           isInstanceOf!(Array, T))
     {
         alias typeof(T.init[0]) U;
 
@@ -835,7 +837,8 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
 
     /// ditto
     @trusted
-    ref PackerImpl pack(T)(auto ref T object) if (is(Unqual!T == struct))
+    ref PackerImpl pack(T)(auto ref T object) if (is(Unqual!T == struct) &&
+                                                  !isInstanceOf!(Array, T))
     {
         static if (hasMember!(T, "toMsgpack"))
         {
@@ -2233,7 +2236,9 @@ struct Unpacker
      *  UnpackException when doesn't read from buffer or precision loss occurs and
      *  MessagePackException when $(D_PARAM T) type doesn't match serialized type.
      */
-    ref Unpacker unpack(T)(ref T array) if (isArray!T && !is(Unqual!T == enum))
+    ref Unpacker unpack(T)(ref T array) if ((isArray!T ||
+                                             isInstanceOf!(Array, T)) &&
+                                            !is(Unqual!T == enum))
     {
         alias typeof(T.init[0]) U;
 
@@ -3285,7 +3290,9 @@ struct Value
 
     /// ditto
     @property @trusted
-    T as(T)() if (isArray!T && !is(Unqual!T == enum))
+    T as(T)() if ((isArray!T ||
+                   isInstanceOf!(Array, T)) &&
+                  !is(Unqual!T == enum))
     {
         alias typeof(T.init[0]) V;
 
@@ -4497,7 +4504,7 @@ unittest
 private:
 
 
-/*
+/**
  * Sets value type and value.
  *
  * Params:
@@ -4627,7 +4634,7 @@ unittest
 private:
 
 
-/*
+/**
  * A callback for type-mismatched error in cast conversion.
  */
 @safe
@@ -4650,7 +4657,7 @@ pure void onInvalidType()
 public:
 
 
-/*
+/**
  * Handy helper for creating MessagePackable object.
  *
  * toMsgpack / fromMsgpack are special methods for serialization / deserialization.
@@ -4859,7 +4866,7 @@ private:
 // Common and system dependent operations
 
 
-/*
+/**
  * MessagePack type-information format
  *
  * See_Also:
@@ -4918,7 +4925,7 @@ enum Format : ubyte
 }
 
 
-/*
+/**
  * For float type serialization / deserialization
  */
 union _f
@@ -4928,7 +4935,7 @@ union _f
 }
 
 
-/*
+/**
  * For double type serialization / deserialization
  */
 union _d
@@ -4938,7 +4945,7 @@ union _d
 }
 
 
-/*
+/**
  * For real type serialization / deserialization
  *
  * 80-bit real is padded to 12 bytes(Linux) and 16 bytes(Mac).
@@ -4958,7 +4965,7 @@ union _r
 enum RealSize = 10;  // Real size is 80bit
 
 
-/*
+/**
  * Detects whether $(D_PARAM T) is a built-in byte type.
  */
 template isByte(T)
@@ -4979,7 +4986,7 @@ unittest
 }
 
 
-/*
+/**
  * Gets asterisk string from pointer type
  */
 template AsteriskOf(T)
