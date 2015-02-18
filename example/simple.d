@@ -14,7 +14,9 @@ void main()
 {
     auto packer = packer(appender!(ubyte[])());
 
-    packer.packArray(null, true, "Hi!", -1, [1, 2]);
+    int[] emptyArray;
+    int[int] emptyMap;
+    packer.packArray(null, true, "Hi!", -1, [1, 2], emptyArray, emptyMap);
 
     auto unpacker = StreamingUnpacker(packer.stream.data);
 

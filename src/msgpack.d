@@ -700,9 +700,6 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
             }
         }
 
-        if (array.empty)
-            return packNil();
-
         // Raw bytes
         static if (isByte!(U) || isSomeChar!(U)) {
             ubyte[] raw = cast(ubyte[])array;
@@ -722,9 +719,6 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
     /// ditto
     ref PackerImpl pack(T)(in T array) if (isAssociativeArray!T)
     {
-        if (array is null)
-            return packNil();
-
         beginMap(array.length);
         foreach (key, value; array) {
             pack(key);
