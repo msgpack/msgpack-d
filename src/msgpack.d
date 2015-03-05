@@ -248,6 +248,20 @@ unittest
 }
 
 
+unittest
+{
+    // char types
+    foreach (Type; TypeTuple!(char, wchar, dchar)) {
+        foreach (i; [Type.init, Type.min, Type.max, cast(Type)'j']) {
+            Type a = i;
+            Type b;
+            unpack(pack(a), b);
+            assert(a == b);
+        }
+    }
+}
+
+
 /**
  * $(D MessagePackException) is a root Exception for MessagePack related operation.
  */
@@ -598,6 +612,19 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
         }
 
         return this;
+    }
+
+
+    /// ditto
+    ref PackerImpl pack(T)(in T value) if (isSomeChar!T && !is(Unqual!T == enum))
+    {
+        static if (is(Unqual!T == char)) {
+            return pack(cast(ubyte)(value));
+        } else static if (is(Unqual!T == wchar)) {
+            return pack(cast(ushort)(value));
+        } else static if (is(Unqual!T == dchar)) {
+            return pack(cast(uint)(value));
+        }
     }
 
 
@@ -2096,6 +2123,22 @@ struct Unpacker
             }
         }
 
+        return this;
+    }
+
+
+    /// ditto
+    ref Unpacker unpack(T)(ref T value) if (isSomeChar!T && !is(Unqual!T == enum))
+    {
+        static if (is(Unqual!T == char)) {
+            ubyte tmp;
+        } else static if (is(Unqual!T == wchar)) {
+            ushort tmp;
+        } else static if (is(Unqual!T == dchar)) {
+            uint tmp;
+        }
+        unpack(tmp);
+        value = cast(T)(tmp);
         return this;
     }
 
