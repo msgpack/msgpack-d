@@ -2544,7 +2544,6 @@ struct Unpacker
         return this;
     }
 
-
     /**
      * Deserializes $(D_PARAM T) object and assigns to $(D_PARAM object).
      *
@@ -3273,6 +3272,14 @@ unittest
 
 // Static resolution routines for Stream deserializer
 
+/**
+ * $(D ExtValue) is a $(D MessagePack) Extended value representation
+ */
+struct ExtValue
+{
+    byte type;    /// An integer 0-127 with application-defined meaning
+    ubyte[] data; /// The raw bytes
+}
 
 /**
  * $(D Value) is a $(D MessagePack) value representation
@@ -3314,8 +3321,10 @@ struct Value
         floating,  /// float, double, real
         array,     /// fix array, array 16, array 32
         map,       /// fix map, map 16, map 32
-        raw        /// fix raw, raw 16, raw 32
+        raw,       /// fix raw, raw 16, raw 32
+        ext        /// fix ext, ext8, ext16, ext32
     }
+
 
     /**
      * msgpack value representation
@@ -3329,6 +3338,7 @@ struct Value
         Value[]      array;     /// corresponding to Type.array
         Value[Value] map;       /// corresponding to Type.map
         ubyte[]      raw;       /// corresponding to Type.raw
+        ExtValue     ext;       /// corresponding to Type.ext
     }
 
 
@@ -3426,6 +3436,20 @@ struct Value
     }
 
     /**
+     * Constructs a $(D Value) with arguments.
+     *
+     * Params:
+     *  value = the real content.
+     *  type  = the type of value.
+     */
+    @trusted
+    this(ExtValue value, Type type = Type.ext)
+    {
+        this(type);
+        via.ext = value;
+    }
+
+    /**
      * Converts value to $(D_PARAM T) type.
      *
      * Returns:
@@ -3479,6 +3503,17 @@ struct Value
     T as(T)() if (is(Unqual!T == enum))
     {
         return cast(T)as!(OriginalType!T);
+    }
+
+
+    /// ditto
+    @property @trusted
+    T as(T)() if (is(Unqual!T == ExtValue))
+    {
+        if (type != Type.ext)
+            onCastError();
+
+        return cast(T)via.ext;
     }
 
 
@@ -3598,7 +3633,7 @@ struct Value
 
     /// ditto
     @property @trusted
-    T as(T)() if (is(Unqual!T == struct))
+    T as(T)() if (is(Unqual!T == struct) && !is(Unqual!T == ExtValue))
     {
         T obj;
 
@@ -3659,6 +3694,9 @@ struct Value
         case Type.raw:
             packer.pack(via.raw);
             break;
+        case Type.ext:
+            packer.packExt(via.ext.type, via.ext.data);
+            break;
         case Type.array:
             packer.beginArray(via.array.length);
             foreach (elem; via.array)
@@ -3691,6 +3729,7 @@ struct Value
         case Type.signed:   return opEquals(other.via.integer);
         case Type.floating: return opEquals(other.via.floating);
         case Type.raw:      return opEquals(other.via.raw);
+        case Type.ext:      return opEquals(other.via.ext);
         case Type.array:    return opEquals(other.via.array);
         case Type.map:      return opEquals(other.via.map);
         }
@@ -3790,6 +3829,18 @@ struct Value
         return via.raw == cast(ubyte[])other;
     }
 
+
+    //
+    @trusted
+    bool opEquals(T : ExtValue)(in T other) const
+    {
+        if (type != Type.ext)
+            return false;
+
+        return via.ext.type == other.type && via.ext.data == other.data;
+    } 
+
+
     @trusted
     hash_t toHash() const nothrow
     {
@@ -3805,6 +3856,7 @@ struct Value
         case Type.signed:   return getHash(&via.integer);
         case Type.floating: return getHash(&via.floating);
         case Type.raw:      return getHash(&via.raw);
+        case Type.ext:      return getHash(&via.ext);
         case Type.array:
             hash_t ret;
             foreach (elem; via.array)
@@ -3902,6 +3954,11 @@ unittest
     enum EStr : string { elem = "hello" }
 
     assert(value.as!(EStr) == EStr.elem);
+
+    // ext
+    auto ext = ExtValue(7, [1,2,3]);
+    value = Value(ExtValue(7, [1,2,3]));
+    assert(value.as!ExtValue == ext);
 
     // array
     auto t = Value(cast(ubyte[])[72, 105, 33]);
