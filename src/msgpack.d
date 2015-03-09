@@ -2884,6 +2884,76 @@ struct Unpacker
 
 
     /**
+     * Unpacks an EXT value into $(D type) and $(D data).
+     * $(D type) is checked and a $(D MessagePackException) is thrown if it does
+     *  not match. The length of $(D data) is checked and a $(D MessagePackException)
+     *  is thrown if the lengths do not match.  If $(D data) is null, a new slice
+     *  is returned.
+     */
+    ref Unpacker unpackExt(ref byte type, ref ubyte[] data)
+    {
+        import std.conv : text;
+
+        canRead(Offset, 0);
+        const header = read();
+
+        uint length;
+        uint rollbackLength = 0;
+        if (header >= Format.EXT && header <= Format.EXT + 4)
+        {
+            // Fixed
+            length = 2^^(header - Format.EXT);
+
+        } else {
+            // Dynamic length
+            switch (header) with (Format)
+            {
+                case EXT8:
+                    canRead(1);
+                    length = read();
+                    rollbackLength = 1;
+                    break;
+                case EXT16:
+                    canRead(2);
+                    length = load16To!ushort(read(2));
+                    rollbackLength = 2;
+                    break;
+                case EXT32:
+                    canRead(4);
+                    length = load32To!uint(read(4));
+                    rollbackLength = 4;
+                    break;
+                default:
+                    rollback();
+            }
+
+        }
+
+        canRead(1 + length);
+
+        // Read and check the type
+        byte type_ = read();
+        rollbackLength += 1;
+        if (type_ != type)
+        {
+            rollback(rollbackLength);
+            throw new MessagePackException(text("Cannot unpack EXT of type ",
+                                                type_, " into type ", type));
+        }
+
+        // Read and check data
+        if (data is null)
+            data = new ubyte[](length);
+        else if (data.length != length) {
+            rollback(rollbackLength);
+            throw new MessagePackException(text("Length mismatch while unpacking EXT: ",
+                            data.length, " was given, actual length is ", length));
+        }
+        data[] = read(length);
+        return this;
+    }
+
+    /**
      * Scans an entire buffer and converts each objects.
      *
      * This method is used for unpacking record-like objects.
@@ -3176,11 +3246,30 @@ unittest
             ExtValue ext = ExtValue(7, data);
             packer.pack(ext);
 
-            auto unpacker = Unpacker(packer.stream.data);
+            auto unpacker1 = Unpacker(packer.stream.data);
             ExtValue witness;
 
-            unpacker.unpack(witness);
+            unpacker1.unpack(witness);
             assert(ext == witness);
+
+            // And try unpackExt
+            auto unpacker2 = Unpacker(packer.stream.data);
+            byte type = 1;
+            ubyte[] deserializedData = new ubyte[](7);
+
+            // This should be a type mismatch (1 != 7)
+            assertThrown!MessagePackException(
+                unpacker2.unpackExt(type, deserializedData));
+            type = 7;
+
+            // A data size mismatch
+            assertThrown!MessagePackException(
+                unpacker2.unpackExt(type, deserializedData));
+            deserializedData = new ubyte[](L);
+
+            // And this should succeed
+            unpacker2.unpackExt(type, deserializedData);
+            assert(deserializedData == data);
         }
     }
     { // user defined
