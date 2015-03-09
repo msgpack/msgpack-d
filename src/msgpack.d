@@ -261,6 +261,13 @@ unittest
     }
 }
 
+unittest
+{
+    // ext type
+    auto result = unpack(pack(ExtValue(7, [1,2,3,4])));
+    assert(result == ExtValue(7, [1,2,3,4]));
+}
+
 
 /**
  * $(D MessagePackException) is a root Exception for MessagePack related operation.
@@ -4338,6 +4345,12 @@ struct StreamingUnpacker
         MAP32,
         RAW,
 
+        // EXT family
+        EXT8,
+        EXT16,
+        EXT32,
+        EXT_DATA,
+
         // D-specific type
         REAL
     }
@@ -4508,6 +4521,11 @@ struct StreamingUnpacker
                     state = State.RAW;
                     cur++;
                     continue;
+                } else if (0xd4 <= header && header <= 0xd8) {  // fix ext
+                    trail = 2 ^^ (header - 0xd4) + 1;
+                    state = State.EXT_DATA;
+                    cur++;
+                    continue;
                 } else if (0x90 <= header && header <= 0x9f) {  // fix array
                     size_t length = header & 0x0f;
                     if (length == 0) {
@@ -4555,6 +4573,18 @@ struct StreamingUnpacker
                     case Format.BIN8, Format.BIN16, Format.BIN32:
                         trail = 1 << (header & 0x03);  // computes container size
                         state = cast(State)(header & 0x1f);
+                        break;
+                    case Format.EXT8:
+                        trail = 1;
+                        state = State.EXT8;
+                        break;
+                    case Format.EXT16:
+                        trail = 2;
+                        state = State.EXT16;
+                        break;
+                    case Format.EXT32:
+                        trail = 4;
+                        state = State.EXT32;
                         break;
                     case Format.NIL:
                         callbackNil(obj);
@@ -4648,6 +4678,34 @@ struct StreamingUnpacker
                     hasRaw_ = true;
                     callbackRaw(obj, buffer_[base..base + trail]);
                     goto Lpush;
+
+                case State.EXT_DATA: Lext:
+                    hasRaw_ = true;
+                    obj.via.ext.type = buffer_[base];
+                    callbackExt(obj, buffer_[base+1..base+trail]);
+                    goto Lpush;
+                case State.EXT8:
+                    trail = buffer_[base] + 1;
+                    if (trail == 0)
+                        goto Lext;
+                    state = State.EXT_DATA;
+                    cur++;
+                    goto Lstart;
+                case State.EXT16:
+                    trail = load16To!size_t(buffer_[base..base+trail]) + 1;
+                    if (trail == 0)
+                        goto Lext;
+                    state = State.EXT_DATA;
+                    cur++;
+                    goto Lstart;
+                case State.EXT32:
+                    trail = load32To!size_t(buffer_[base..base+trail]) + 1;
+                    if (trail == 0)
+                        goto Lext;
+                    state = State.EXT_DATA;
+                    cur++;
+                    goto Lstart;
+
                 case State.STR8, State.BIN8:
                     trail = buffer_[base];
                     if (trail == 0)
@@ -4811,35 +4869,60 @@ struct StreamingUnpacker
 
 unittest
 {
-    // serialize
-    mixin DefinePacker;
+    {
+        // serialize
+        mixin DefinePacker;
 
-    packer.packArray(null, true, 1, -2, "Hi!", [1], [1:1], double.max);
+        packer.packArray(null, true, 1, -2, "Hi!", [1], [1:1], double.max, ExtValue(7, [1,2,3,4]));
 
-    // deserialize
-    auto unpacker = StreamingUnpacker(packer.stream.data); unpacker.execute();
-    auto unpacked = unpacker.purge();
+        // deserialize
+        auto unpacker = StreamingUnpacker(packer.stream.data); unpacker.execute();
+        auto unpacked = unpacker.purge();
 
-    // Range test
-    foreach (unused; 0..2) {
-        uint i;
+        // Range test
+        foreach (unused; 0..2) {
+            uint i;
 
-        foreach (obj; unpacked)
-            i++;
+            foreach (obj; unpacked)
+                i++;
 
-        assert(i == unpacked.via.array.length);
+            assert(i == unpacked.via.array.length);
+        }
+
+        auto result = unpacked.via.array;
+
+        assert(result[0].type          == Value.Type.nil);
+        assert(result[1].via.boolean   == true);
+        assert(result[2].via.uinteger  == 1);
+        assert(result[3].via.integer   == -2);
+        assert(result[4].via.raw       == [72, 105, 33]);
+        assert(result[5].as!(int[])    == [1]);
+        assert(result[6].as!(int[int]) == [1:1]);
+        assert(result[7].as!(double)   == double.max);
+        assert(result[8].as!(ExtValue) == ExtValue(7, [1,2,3,4]));
     }
 
-    auto result = unpacked.via.array;
+    // Test many combinations of EXT
+    {
+        mixin DefinePacker;
 
-    assert(result[0].type          == Value.Type.nil);
-    assert(result[1].via.boolean   == true);
-    assert(result[2].via.uinteger  == 1);
-    assert(result[3].via.integer   == -2);
-    assert(result[4].via.raw       == [72, 105, 33]);
-    assert(result[5].as!(int[])    == [1]);
-    assert(result[6].as!(int[int]) == [1:1]);
-    assert(result[7].as!(double)   == double.max);
+        alias Lengths = TypeTuple!(0, 1, 2, 3, 4, 5, 8, 15, 16, 31,
+                                   255, 256, 2^^16, 2^^32);
+
+        // Initialize a bunch of ExtValues and pack them
+        ExtValue[Lengths.length] values;
+        foreach (I, L; Lengths)
+            values[I] = ExtValue(7, new ubyte[](L));
+        packer.pack(values);
+
+        auto unpacker = StreamingUnpacker(packer.stream.data); unpacker.execute();
+        auto unpacked = unpacker.purge();
+
+        // Compare unpacked values to originals
+        size_t i = 0;
+        foreach (deserialized; unpacked)
+            assert(deserialized == values[i++]);
+    }
 }
 
 
@@ -4887,6 +4970,13 @@ void callbackRaw(ref Value value, ubyte[] raw)
     value.via.raw = raw;
 }
 
+/// ditto
+@trusted
+void callbackExt(ref Value value, ubyte[] raw)
+{
+    value.type    = Value.Type.ext;
+    value.via.ext.data = raw;
+}
 
 /// ditto
 @trusted
