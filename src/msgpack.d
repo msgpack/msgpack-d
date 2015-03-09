@@ -2665,7 +2665,8 @@ struct Unpacker
 
 
     /// ditto
-    ref Unpacker unpack(T)(ref T object) if (is(Unqual!T == struct))
+    ref Unpacker unpack(T)(ref T object) if (is(Unqual!T == struct) &&
+                                             !is(Unqual!T == ExtValue))
     {
         static if (hasMember!(T, "fromMsgpack"))
         {
@@ -3295,14 +3296,6 @@ unittest
 
 // Static resolution routines for Stream deserializer
 
-/**
- * $(D ExtValue) is a $(D MessagePack) Extended value representation
- */
-struct ExtValue
-{
-    byte type;    /// An integer 0-127 with application-defined meaning
-    ubyte[] data; /// The raw bytes
-}
 
 /**
  * $(D Value) is a $(D MessagePack) value representation
@@ -4080,6 +4073,18 @@ unittest
      * static struct NonMessagePackable {}
      * auto nonMessagePackable = value.as!(NonMessagePackable);
      */
+}
+
+
+/**
+ * $(D ExtValue) is a $(D MessagePack) Extended value representation.
+ * The application is responsible for correctly interpreting $(D data) according
+ *  to the type described by $(D type).
+ */
+struct ExtValue
+{
+    byte type;    /// An integer 0-127 with application-defined meaning
+    ubyte[] data; /// The raw bytes
 }
 
 
