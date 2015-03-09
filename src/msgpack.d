@@ -951,6 +951,71 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
         return this;
     }
 
+    /**
+     * Packs $(D data) as an extended value of $(D type).
+     *
+     * ----
+     * packer.packExt(3, bytes);
+     * ----
+     *
+     * $(D type) must be a signed byte 0-127.
+     *
+     * Params:
+     *  type = the application-defined type for the data
+     *  data = an array of bytes
+     *
+     * Returns:
+     *  seld, i.e. for method chaining.
+     */
+    ref PackerImpl packExt(in byte type, const ubyte[] data)
+    {
+        ref PackerImpl packExtFixed(int fmt)
+        {
+            store_[0] = cast(ubyte)fmt;
+            store_[1] = type;
+            stream_.put(store_[0 .. 2]);
+            stream_.put(data);
+            return this;
+        }
+
+        // Try packing to a fixed-length type
+        if (data.length == 1)
+            return packExtFixed(Format.EXT + 0);
+        else if (data.length == 2)
+            return packExtFixed(Format.EXT + 1);
+        else if (data.length == 4)
+            return packExtFixed(Format.EXT + 2);
+        else if (data.length == 8)
+            return packExtFixed(Format.EXT + 3);
+        else if (data.length == 16)
+            return packExtFixed(Format.EXT + 4);
+
+        int typeByte = void;
+        if (data.length <= (2^^8)-1)
+        {
+            store_[0] = Format.EXT8;
+            store_[1] = cast(ubyte)data.length;
+            typeByte = 2;
+
+        } else if (data.length <= (2^^16)-1) {
+            store_[0] = Format.EXT16;
+            const temp = convertEndianTo!16(data.length);
+            *cast(ushort*)&store_[Offset] = temp;
+            typeByte = 3;
+        } else if (data.length <= (2^^32)-1) {
+            store_[0] = Format.EXT32;
+            const temp = convertEndianTo!32(data.length);
+            *cast(uint*)&store_[Offset] = temp;
+            typeByte = 5;
+        }
+
+        store_[typeByte] = type;
+        stream_.put(store_[0..typeByte+1]);
+        stream_.put(data);
+
+        return this;
+    }
+
 
     /**
      * Serializes the type-information to stream.
@@ -1646,6 +1711,92 @@ unittest
                 packer.pack(test);
                 assert(false);
             } catch (Exception e) { }
+        }
+    }
+
+    // ext types
+    {
+        byte type = 7; // an arbitrary type value
+
+        // fixexts
+        {
+            ubyte[16] data;
+            data[] = 1;
+            foreach (L; TypeTuple!(1, 2, 4, 8, 16))
+            {
+                mixin DefinePacker;
+                packer.packExt(type, data[0 .. L]);
+
+                // format, type, data
+                assert(packer.stream.data.length == 2 + L);
+                const l = 2 ^^ (packer.stream.data[0] - Format.EXT);
+                assert(l == L);
+                assert(packer.stream.data[1] == type);
+                assert(packer.stream.data[2 .. 2+l] == data[0 .. L]);
+            }
+        }
+
+        // ext8
+        {
+            foreach (L; TypeTuple!(3, 7, 255))
+            {
+                ubyte[] data = new ubyte[](L);
+                data[] = 1;
+
+                mixin DefinePacker;
+                packer.packExt(type, data[0 .. L]);
+
+                // format, length, type, data
+                assert(packer.stream.data.length == 3 + L);
+                assert(packer.stream.data[0] == Format.EXT8);
+                assert(packer.stream.data[1] == L);
+                assert(packer.stream.data[2] == type);
+                assert(packer.stream.data[3 .. 3 + L] == data);
+            }
+        }
+
+        // ext16
+        {
+            foreach (L; TypeTuple!(256, (2^^16)-1))
+            {
+                ubyte[] data = new ubyte[](L);
+                data[] = 1;
+
+                mixin DefinePacker;
+                packer.packExt(type, data[0 .. L]);
+
+                // format, length, type, data
+                import std.conv : text;
+                assert(packer.stream.data.length == 4 + L, text(packer.stream.data.length));
+                assert(packer.stream.data[0] == Format.EXT16);
+
+                ushort l = convertEndianTo!16(L);
+                assert(memcmp(&packer.stream.data[1], &l, ushort.sizeof) == 0);
+                assert(packer.stream.data[3] == type);
+                assert(packer.stream.data[4 .. 4 + L] == data);
+            }
+        }
+
+        // ext32
+        {
+            foreach (L; TypeTuple!(2^^16, 2^^17))
+            {
+                ubyte[] data = new ubyte[](L);
+                data[] = 1;
+
+                mixin DefinePacker;
+                packer.packExt(type, data[0 .. L]);
+
+                // format, length, type, data
+                import std.conv : text;
+                assert(packer.stream.data.length == 6 + L, text(packer.stream.data.length));
+                assert(packer.stream.data[0] == Format.EXT32);
+
+                uint l = convertEndianTo!32(L);
+                assert(memcmp(&packer.stream.data[1], &l, uint.sizeof) == 0);
+                assert(packer.stream.data[5] == type);
+                assert(packer.stream.data[6 .. 6 + L] == data);
+            }
         }
     }
 }
@@ -4942,6 +5093,12 @@ enum Format : ubyte
     BIN8  = 0xc4,
     BIN16 = 0xc5,
     BIN32 = 0xc6,
+
+    // ext type
+    EXT   = 0xd4,  // fixext 1/2/4/8/16
+    EXT8  = 0xc7,
+    EXT16 = 0xc8,
+    EXT32 = 0xc9,
 
     // str type
     STR8  = 0xd9,
