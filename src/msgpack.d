@@ -865,7 +865,8 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
     /// ditto
     @trusted
     ref PackerImpl pack(T)(auto ref T object) if (is(Unqual!T == struct) &&
-                                                  !isInstanceOf!(Array, T))
+                                                  !isInstanceOf!(Array, T) &&
+                                                  !is(Unqual!T == ExtValue))
     {
         static if (hasMember!(T, "toMsgpack"))
         {
@@ -948,6 +949,28 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
         foreach (i, T; Types)
             pack(objects[i]);
 
+        return this;
+    }
+
+    /**
+     * Packs $(D data) as an extended value of $(D type).
+     *
+     * ----
+     * packer.packExt(3, bytes);
+     * ----
+     *
+     * $(D type) must be a signed byte 0-127.
+     *
+     * Params:
+     *  type = the application-defined type for the data
+     *  data = an array of bytes
+     *
+     * Returns:
+     *  seld, i.e. for method chaining.
+     */
+    ref PackerImpl pack(T)(auto ref const T data) if (is(Unqual!T == ExtValue))
+    {
+        packExt(data.type, data.data);
         return this;
     }
 
@@ -1725,7 +1748,7 @@ unittest
             foreach (L; TypeTuple!(1, 2, 4, 8, 16))
             {
                 mixin DefinePacker;
-                packer.packExt(type, data[0 .. L]);
+                packer.pack(ExtValue(type, data[0 .. L]));
 
                 // format, type, data
                 assert(packer.stream.data.length == 2 + L);
@@ -1744,7 +1767,7 @@ unittest
                 data[] = 1;
 
                 mixin DefinePacker;
-                packer.packExt(type, data[0 .. L]);
+                packer.pack(ExtValue(type, data[0 .. L]));
 
                 // format, length, type, data
                 assert(packer.stream.data.length == 3 + L);
@@ -1763,7 +1786,7 @@ unittest
                 data[] = 1;
 
                 mixin DefinePacker;
-                packer.packExt(type, data[0 .. L]);
+                packer.pack(ExtValue(type, data[0 .. L]));
 
                 // format, length, type, data
                 import std.conv : text;
@@ -1785,7 +1808,7 @@ unittest
                 data[] = 1;
 
                 mixin DefinePacker;
-                packer.packExt(type, data[0 .. L]);
+                packer.pack(ExtValue(type, data[0 .. L]));
 
                 // format, length, type, data
                 import std.conv : text;
