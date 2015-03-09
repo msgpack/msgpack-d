@@ -2422,6 +2422,51 @@ struct Unpacker
 
 
     /// ditto
+    ref Unpacker unpack(T)(ref T value) if (is(T == ExtValue))
+    {
+        canRead(Offset, 0);
+        const header = read();
+
+        // Fixed
+        if (header >= Format.EXT && header <= Format.EXT + 4)
+        {
+            const length = 2^^(header - Format.EXT);
+            canRead(1 + length);
+
+            value.type = read();
+            value.data = read(length);
+            return this;
+        }
+
+        // Dynamic length
+        uint length;
+        switch (header) with (Format)
+        {
+            case EXT8:
+                canRead(1);
+                length = read();
+                break;
+            case EXT16:
+                canRead(2);
+                length = load16To!ushort(read(2));
+                break;
+            case EXT32:
+                canRead(4);
+                length = load32To!uint(read(4));
+                break;
+            default:
+                rollback();
+        }
+
+        canRead(1 + length);
+        value.type = read();
+        value.data = read(length);
+
+        return this;
+    }
+
+
+    /// ditto
     ref Unpacker unpack(Types...)(ref Types objects) if (Types.length > 1)
     {
         foreach (i, T; Types)
@@ -3112,6 +3157,24 @@ unittest
 
         unpacker.unpack(result);
         assert(test == result);
+    }
+    { // ext
+
+        // Try a variety of lengths, making sure to hit all the fixexts
+        foreach (L; TypeTuple!(1, 2, 3, 4, 5, 8, 9, 16, 32, 512, 2^^16))
+        {
+            mixin DefinePacker;
+
+            ubyte[] data = new ubyte[](L);
+            ExtValue ext = ExtValue(7, data);
+            packer.pack(ext);
+
+            auto unpacker = Unpacker(packer.stream.data);
+            ExtValue witness;
+
+            unpacker.unpack(witness);
+            assert(ext == witness);
+        }
     }
     { // user defined
         {
