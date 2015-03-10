@@ -22,8 +22,7 @@
  *
  * See_Also:
  *  $(LINK2 http://msgpack.org/, The MessagePack Project)$(BR)
- *  $(LINK2 http://wiki.msgpack.org/display/MSGPACK/Design+of+Serialization, MessagePack Design concept)$(BR)
- *  $(LINK2 http://wiki.msgpack.org/display/MSGPACK/Format+specification, MessagePack data format)
+ *  $(LINK2 https://github.com/msgpack/msgpack/blob/master/spec.md, MessagePack data format)
  *
  * Copyright: Copyright Masahiro Nakagawa 2010-.
  * License:   <a href="http://www.boost.org/LICENSE_1_0.txt">Boost License 1.0</a>.
