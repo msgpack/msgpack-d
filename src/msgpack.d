@@ -1037,7 +1037,8 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
             const temp = convertEndianTo!32(data.length);
             *cast(uint*)&store_[Offset] = temp;
             typeByte = 5;
-        }
+        } else
+            throw new MessagePackException("Data too large to pack as EXT");
 
         store_[typeByte] = type;
         stream_.put(store_[0..typeByte+1]);
