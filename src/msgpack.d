@@ -260,6 +260,13 @@ unittest
     }
 }
 
+unittest
+{
+    // ext type
+    auto result = unpack(pack(ExtValue(7, [1,2,3,4])));
+    assert(result == ExtValue(7, [1,2,3,4]));
+}
+
 
 /**
  * $(D MessagePackException) is a root Exception for MessagePack related operation.
@@ -864,7 +871,8 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
     /// ditto
     @trusted
     ref PackerImpl pack(T)(auto ref T object) if (is(Unqual!T == struct) &&
-                                                  !isInstanceOf!(Array, T))
+                                                  !isInstanceOf!(Array, T) &&
+                                                  !is(Unqual!T == ExtValue))
     {
         static if (hasMember!(T, "toMsgpack"))
         {
@@ -946,6 +954,94 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
         beginMap(Types.length / 2);
         foreach (i, T; Types)
             pack(objects[i]);
+
+        return this;
+    }
+
+    /**
+     * Packs $(D data) as an extended value of $(D type).
+     *
+     * ----
+     * packer.packExt(3, bytes);
+     * ----
+     *
+     * $(D type) must be a signed byte 0-127.
+     *
+     * Params:
+     *  type = the application-defined type for the data
+     *  data = an array of bytes
+     *
+     * Returns:
+     *  seld, i.e. for method chaining.
+     */
+    ref PackerImpl pack(T)(auto ref const T data) if (is(Unqual!T == ExtValue))
+    {
+        packExt(data.type, data.data);
+        return this;
+    }
+
+    /**
+     * Packs $(D data) as an extended value of $(D type).
+     *
+     * ----
+     * packer.packExt(3, bytes);
+     * ----
+     *
+     * $(D type) must be a signed byte 0-127.
+     *
+     * Params:
+     *  type = the application-defined type for the data
+     *  data = an array of bytes
+     *
+     * Returns:
+     *  seld, i.e. for method chaining.
+     */
+    ref PackerImpl packExt(in byte type, const ubyte[] data)
+    {
+        ref PackerImpl packExtFixed(int fmt)
+        {
+            store_[0] = cast(ubyte)fmt;
+            store_[1] = type;
+            stream_.put(store_[0 .. 2]);
+            stream_.put(data);
+            return this;
+        }
+
+        // Try packing to a fixed-length type
+        if (data.length == 1)
+            return packExtFixed(Format.EXT + 0);
+        else if (data.length == 2)
+            return packExtFixed(Format.EXT + 1);
+        else if (data.length == 4)
+            return packExtFixed(Format.EXT + 2);
+        else if (data.length == 8)
+            return packExtFixed(Format.EXT + 3);
+        else if (data.length == 16)
+            return packExtFixed(Format.EXT + 4);
+
+        int typeByte = void;
+        if (data.length <= (2^^8)-1)
+        {
+            store_[0] = Format.EXT8;
+            store_[1] = cast(ubyte)data.length;
+            typeByte = 2;
+
+        } else if (data.length <= (2^^16)-1) {
+            store_[0] = Format.EXT16;
+            const temp = convertEndianTo!16(data.length);
+            *cast(ushort*)&store_[Offset] = temp;
+            typeByte = 3;
+        } else if (data.length <= (2^^32)-1) {
+            store_[0] = Format.EXT32;
+            const temp = convertEndianTo!32(data.length);
+            *cast(uint*)&store_[Offset] = temp;
+            typeByte = 5;
+        } else
+            throw new MessagePackException("Data too large to pack as EXT");
+
+        store_[typeByte] = type;
+        stream_.put(store_[0..typeByte+1]);
+        stream_.put(data);
 
         return this;
     }
@@ -1647,6 +1743,92 @@ unittest
             } catch (Exception e) { }
         }
     }
+
+    // ext types
+    {
+        byte type = 7; // an arbitrary type value
+
+        // fixexts
+        {
+            ubyte[16] data;
+            data[] = 1;
+            foreach (L; TypeTuple!(1, 2, 4, 8, 16))
+            {
+                mixin DefinePacker;
+                packer.pack(ExtValue(type, data[0 .. L]));
+
+                // format, type, data
+                assert(packer.stream.data.length == 2 + L);
+                const l = 2 ^^ (packer.stream.data[0] - Format.EXT);
+                assert(l == L);
+                assert(packer.stream.data[1] == type);
+                assert(packer.stream.data[2 .. 2+l] == data[0 .. L]);
+            }
+        }
+
+        // ext8
+        {
+            foreach (L; TypeTuple!(3, 7, 255))
+            {
+                ubyte[] data = new ubyte[](L);
+                data[] = 1;
+
+                mixin DefinePacker;
+                packer.pack(ExtValue(type, data[0 .. L]));
+
+                // format, length, type, data
+                assert(packer.stream.data.length == 3 + L);
+                assert(packer.stream.data[0] == Format.EXT8);
+                assert(packer.stream.data[1] == L);
+                assert(packer.stream.data[2] == type);
+                assert(packer.stream.data[3 .. 3 + L] == data);
+            }
+        }
+
+        // ext16
+        {
+            foreach (L; TypeTuple!(256, (2^^16)-1))
+            {
+                ubyte[] data = new ubyte[](L);
+                data[] = 1;
+
+                mixin DefinePacker;
+                packer.pack(ExtValue(type, data[0 .. L]));
+
+                // format, length, type, data
+                import std.conv : text;
+                assert(packer.stream.data.length == 4 + L, text(packer.stream.data.length));
+                assert(packer.stream.data[0] == Format.EXT16);
+
+                ushort l = convertEndianTo!16(L);
+                assert(memcmp(&packer.stream.data[1], &l, ushort.sizeof) == 0);
+                assert(packer.stream.data[3] == type);
+                assert(packer.stream.data[4 .. 4 + L] == data);
+            }
+        }
+
+        // ext32
+        {
+            foreach (L; TypeTuple!(2^^16, 2^^17))
+            {
+                ubyte[] data = new ubyte[](L);
+                data[] = 1;
+
+                mixin DefinePacker;
+                packer.pack(ExtValue(type, data[0 .. L]));
+
+                // format, length, type, data
+                import std.conv : text;
+                assert(packer.stream.data.length == 6 + L, text(packer.stream.data.length));
+                assert(packer.stream.data[0] == Format.EXT32);
+
+                uint l = convertEndianTo!32(L);
+                assert(memcmp(&packer.stream.data[1], &l, uint.sizeof) == 0);
+                assert(packer.stream.data[5] == type);
+                assert(packer.stream.data[6 .. 6 + L] == data);
+            }
+        }
+    }
 }
 
 
@@ -2247,6 +2429,51 @@ struct Unpacker
 
 
     /// ditto
+    ref Unpacker unpack(T)(ref T value) if (is(T == ExtValue))
+    {
+        canRead(Offset, 0);
+        const header = read();
+
+        // Fixed
+        if (header >= Format.EXT && header <= Format.EXT + 4)
+        {
+            const length = 2^^(header - Format.EXT);
+            canRead(1 + length);
+
+            value.type = read();
+            value.data = read(length);
+            return this;
+        }
+
+        // Dynamic length
+        uint length;
+        switch (header) with (Format)
+        {
+            case EXT8:
+                canRead(1);
+                length = read();
+                break;
+            case EXT16:
+                canRead(2);
+                length = load16To!ushort(read(2));
+                break;
+            case EXT32:
+                canRead(4);
+                length = load32To!uint(read(4));
+                break;
+            default:
+                rollback();
+        }
+
+        canRead(1 + length);
+        value.type = read();
+        value.data = read(length);
+
+        return this;
+    }
+
+
+    /// ditto
     ref Unpacker unpack(Types...)(ref Types objects) if (Types.length > 1)
     {
         foreach (i, T; Types)
@@ -2392,7 +2619,6 @@ struct Unpacker
         return this;
     }
 
-
     /**
      * Deserializes $(D_PARAM T) object and assigns to $(D_PARAM object).
      *
@@ -2491,7 +2717,8 @@ struct Unpacker
 
 
     /// ditto
-    ref Unpacker unpack(T)(ref T object) if (is(Unqual!T == struct))
+    ref Unpacker unpack(T)(ref T object) if (is(Unqual!T == struct) &&
+                                             !is(Unqual!T == ExtValue))
     {
         static if (hasMember!(T, "fromMsgpack"))
         {
@@ -2655,6 +2882,76 @@ struct Unpacker
         return length;
     }
 
+
+    /**
+     * Unpacks an EXT value into $(D type) and $(D data).
+     * $(D type) is checked and a $(D MessagePackException) is thrown if it does
+     *  not match. The length of $(D data) is checked and a $(D MessagePackException)
+     *  is thrown if the lengths do not match.  If $(D data) is null, a new slice
+     *  is returned.
+     */
+    ref Unpacker unpackExt(ref byte type, ref ubyte[] data)
+    {
+        import std.conv : text;
+
+        canRead(Offset, 0);
+        const header = read();
+
+        uint length;
+        uint rollbackLength = 0;
+        if (header >= Format.EXT && header <= Format.EXT + 4)
+        {
+            // Fixed
+            length = 2^^(header - Format.EXT);
+
+        } else {
+            // Dynamic length
+            switch (header) with (Format)
+            {
+                case EXT8:
+                    canRead(1);
+                    length = read();
+                    rollbackLength = 1;
+                    break;
+                case EXT16:
+                    canRead(2);
+                    length = load16To!ushort(read(2));
+                    rollbackLength = 2;
+                    break;
+                case EXT32:
+                    canRead(4);
+                    length = load32To!uint(read(4));
+                    rollbackLength = 4;
+                    break;
+                default:
+                    rollback();
+            }
+
+        }
+
+        canRead(1 + length);
+
+        // Read and check the type
+        byte type_ = read();
+        rollbackLength += 1;
+        if (type_ != type)
+        {
+            rollback(rollbackLength);
+            throw new MessagePackException(text("Cannot unpack EXT of type ",
+                                                type_, " into type ", type));
+        }
+
+        // Read and check data
+        if (data is null)
+            data = new ubyte[](length);
+        else if (data.length != length) {
+            rollback(rollbackLength);
+            throw new MessagePackException(text("Length mismatch while unpacking EXT: ",
+                            data.length, " was given, actual length is ", length));
+        }
+        data[] = read(length);
+        return this;
+    }
 
     /**
      * Scans an entire buffer and converts each objects.
@@ -2938,6 +3235,43 @@ unittest
         unpacker.unpack(result);
         assert(test == result);
     }
+    { // ext
+
+        // Try a variety of lengths, making sure to hit all the fixexts
+        foreach (L; TypeTuple!(1, 2, 3, 4, 5, 8, 9, 16, 32, 512, 2^^16))
+        {
+            mixin DefinePacker;
+
+            ubyte[] data = new ubyte[](L);
+            ExtValue ext = ExtValue(7, data);
+            packer.pack(ext);
+
+            auto unpacker1 = Unpacker(packer.stream.data);
+            ExtValue witness;
+
+            unpacker1.unpack(witness);
+            assert(ext == witness);
+
+            // And try unpackExt
+            auto unpacker2 = Unpacker(packer.stream.data);
+            byte type = 1;
+            ubyte[] deserializedData = new ubyte[](7);
+
+            // This should be a type mismatch (1 != 7)
+            assertThrown!MessagePackException(
+                unpacker2.unpackExt(type, deserializedData));
+            type = 7;
+
+            // A data size mismatch
+            assertThrown!MessagePackException(
+                unpacker2.unpackExt(type, deserializedData));
+            deserializedData = new ubyte[](L);
+
+            // And this should succeed
+            unpacker2.unpackExt(type, deserializedData);
+            assert(deserializedData == data);
+        }
+    }
     { // user defined
         {
             static struct S
@@ -3162,8 +3496,10 @@ struct Value
         floating,  /// float, double, real
         array,     /// fix array, array 16, array 32
         map,       /// fix map, map 16, map 32
-        raw        /// fix raw, raw 16, raw 32
+        raw,       /// fix raw, raw 16, raw 32
+        ext        /// fix ext, ext8, ext16, ext32
     }
+
 
     /**
      * msgpack value representation
@@ -3177,6 +3513,7 @@ struct Value
         Value[]      array;     /// corresponding to Type.array
         Value[Value] map;       /// corresponding to Type.map
         ubyte[]      raw;       /// corresponding to Type.raw
+        ExtValue     ext;       /// corresponding to Type.ext
     }
 
 
@@ -3274,6 +3611,20 @@ struct Value
     }
 
     /**
+     * Constructs a $(D Value) with arguments.
+     *
+     * Params:
+     *  value = the real content.
+     *  type  = the type of value.
+     */
+    @trusted
+    this(ExtValue value, Type type = Type.ext)
+    {
+        this(type);
+        via.ext = value;
+    }
+
+    /**
      * Converts value to $(D_PARAM T) type.
      *
      * Returns:
@@ -3327,6 +3678,17 @@ struct Value
     T as(T)() if (is(Unqual!T == enum))
     {
         return cast(T)as!(OriginalType!T);
+    }
+
+
+    /// ditto
+    @property @trusted
+    T as(T)() if (is(Unqual!T == ExtValue))
+    {
+        if (type != Type.ext)
+            onCastError();
+
+        return cast(T)via.ext;
     }
 
 
@@ -3446,7 +3808,7 @@ struct Value
 
     /// ditto
     @property @trusted
-    T as(T)() if (is(Unqual!T == struct))
+    T as(T)() if (is(Unqual!T == struct) && !is(Unqual!T == ExtValue))
     {
         T obj;
 
@@ -3507,6 +3869,9 @@ struct Value
         case Type.raw:
             packer.pack(via.raw);
             break;
+        case Type.ext:
+            packer.packExt(via.ext.type, via.ext.data);
+            break;
         case Type.array:
             packer.beginArray(via.array.length);
             foreach (elem; via.array)
@@ -3539,6 +3904,7 @@ struct Value
         case Type.signed:   return opEquals(other.via.integer);
         case Type.floating: return opEquals(other.via.floating);
         case Type.raw:      return opEquals(other.via.raw);
+        case Type.ext:      return opEquals(other.via.ext);
         case Type.array:    return opEquals(other.via.array);
         case Type.map:      return opEquals(other.via.map);
         }
@@ -3638,6 +4004,18 @@ struct Value
         return via.raw == cast(ubyte[])other;
     }
 
+
+    //
+    @trusted
+    bool opEquals(T : ExtValue)(in T other) const
+    {
+        if (type != Type.ext)
+            return false;
+
+        return via.ext.type == other.type && via.ext.data == other.data;
+    } 
+
+
     @trusted
     hash_t toHash() const nothrow
     {
@@ -3653,6 +4031,7 @@ struct Value
         case Type.signed:   return getHash(&via.integer);
         case Type.floating: return getHash(&via.floating);
         case Type.raw:      return getHash(&via.raw);
+        case Type.ext:      return getHash(&via.ext);
         case Type.array:
             hash_t ret;
             foreach (elem; via.array)
@@ -3751,6 +4130,11 @@ unittest
 
     assert(value.as!(EStr) == EStr.elem);
 
+    // ext
+    auto ext = ExtValue(7, [1,2,3]);
+    value = Value(ExtValue(7, [1,2,3]));
+    assert(value.as!ExtValue == ext);
+
     // array
     auto t = Value(cast(ubyte[])[72, 105, 33]);
     value = Value([t]);
@@ -3848,6 +4232,18 @@ unittest
      * static struct NonMessagePackable {}
      * auto nonMessagePackable = value.as!(NonMessagePackable);
      */
+}
+
+
+/**
+ * $(D ExtValue) is a $(D MessagePack) Extended value representation.
+ * The application is responsible for correctly interpreting $(D data) according
+ *  to the type described by $(D type).
+ */
+struct ExtValue
+{
+    byte type;    /// An integer 0-127 with application-defined meaning
+    ubyte[] data; /// The raw bytes
 }
 
 
@@ -4038,6 +4434,12 @@ struct StreamingUnpacker
         MAP32,
         RAW,
 
+        // EXT family
+        EXT8,
+        EXT16,
+        EXT32,
+        EXT_DATA,
+
         // D-specific type
         REAL
     }
@@ -4208,6 +4610,11 @@ struct StreamingUnpacker
                     state = State.RAW;
                     cur++;
                     continue;
+                } else if (0xd4 <= header && header <= 0xd8) {  // fix ext
+                    trail = 2 ^^ (header - 0xd4) + 1;
+                    state = State.EXT_DATA;
+                    cur++;
+                    continue;
                 } else if (0x90 <= header && header <= 0x9f) {  // fix array
                     size_t length = header & 0x0f;
                     if (length == 0) {
@@ -4255,6 +4662,18 @@ struct StreamingUnpacker
                     case Format.BIN8, Format.BIN16, Format.BIN32:
                         trail = 1 << (header & 0x03);  // computes container size
                         state = cast(State)(header & 0x1f);
+                        break;
+                    case Format.EXT8:
+                        trail = 1;
+                        state = State.EXT8;
+                        break;
+                    case Format.EXT16:
+                        trail = 2;
+                        state = State.EXT16;
+                        break;
+                    case Format.EXT32:
+                        trail = 4;
+                        state = State.EXT32;
                         break;
                     case Format.NIL:
                         callbackNil(obj);
@@ -4348,6 +4767,34 @@ struct StreamingUnpacker
                     hasRaw_ = true;
                     callbackRaw(obj, buffer_[base..base + trail]);
                     goto Lpush;
+
+                case State.EXT_DATA: Lext:
+                    hasRaw_ = true;
+                    obj.via.ext.type = buffer_[base];
+                    callbackExt(obj, buffer_[base+1..base+trail]);
+                    goto Lpush;
+                case State.EXT8:
+                    trail = buffer_[base] + 1;
+                    if (trail == 0)
+                        goto Lext;
+                    state = State.EXT_DATA;
+                    cur++;
+                    goto Lstart;
+                case State.EXT16:
+                    trail = load16To!size_t(buffer_[base..base+trail]) + 1;
+                    if (trail == 0)
+                        goto Lext;
+                    state = State.EXT_DATA;
+                    cur++;
+                    goto Lstart;
+                case State.EXT32:
+                    trail = load32To!size_t(buffer_[base..base+trail]) + 1;
+                    if (trail == 0)
+                        goto Lext;
+                    state = State.EXT_DATA;
+                    cur++;
+                    goto Lstart;
+
                 case State.STR8, State.BIN8:
                     trail = buffer_[base];
                     if (trail == 0)
@@ -4511,35 +4958,60 @@ struct StreamingUnpacker
 
 unittest
 {
-    // serialize
-    mixin DefinePacker;
+    {
+        // serialize
+        mixin DefinePacker;
 
-    packer.packArray(null, true, 1, -2, "Hi!", [1], [1:1], double.max);
+        packer.packArray(null, true, 1, -2, "Hi!", [1], [1:1], double.max, ExtValue(7, [1,2,3,4]));
 
-    // deserialize
-    auto unpacker = StreamingUnpacker(packer.stream.data); unpacker.execute();
-    auto unpacked = unpacker.purge();
+        // deserialize
+        auto unpacker = StreamingUnpacker(packer.stream.data); unpacker.execute();
+        auto unpacked = unpacker.purge();
 
-    // Range test
-    foreach (unused; 0..2) {
-        uint i;
+        // Range test
+        foreach (unused; 0..2) {
+            uint i;
 
-        foreach (obj; unpacked)
-            i++;
+            foreach (obj; unpacked)
+                i++;
 
-        assert(i == unpacked.via.array.length);
+            assert(i == unpacked.via.array.length);
+        }
+
+        auto result = unpacked.via.array;
+
+        assert(result[0].type          == Value.Type.nil);
+        assert(result[1].via.boolean   == true);
+        assert(result[2].via.uinteger  == 1);
+        assert(result[3].via.integer   == -2);
+        assert(result[4].via.raw       == [72, 105, 33]);
+        assert(result[5].as!(int[])    == [1]);
+        assert(result[6].as!(int[int]) == [1:1]);
+        assert(result[7].as!(double)   == double.max);
+        assert(result[8].as!(ExtValue) == ExtValue(7, [1,2,3,4]));
     }
 
-    auto result = unpacked.via.array;
+    // Test many combinations of EXT
+    {
+        mixin DefinePacker;
 
-    assert(result[0].type          == Value.Type.nil);
-    assert(result[1].via.boolean   == true);
-    assert(result[2].via.uinteger  == 1);
-    assert(result[3].via.integer   == -2);
-    assert(result[4].via.raw       == [72, 105, 33]);
-    assert(result[5].as!(int[])    == [1]);
-    assert(result[6].as!(int[int]) == [1:1]);
-    assert(result[7].as!(double)   == double.max);
+        alias Lengths = TypeTuple!(0, 1, 2, 3, 4, 5, 8, 15, 16, 31,
+                                   255, 256, 2^^16, 2^^32);
+
+        // Initialize a bunch of ExtValues and pack them
+        ExtValue[Lengths.length] values;
+        foreach (I, L; Lengths)
+            values[I] = ExtValue(7, new ubyte[](L));
+        packer.pack(values);
+
+        auto unpacker = StreamingUnpacker(packer.stream.data); unpacker.execute();
+        auto unpacked = unpacker.purge();
+
+        // Compare unpacked values to originals
+        size_t i = 0;
+        foreach (deserialized; unpacked)
+            assert(deserialized == values[i++]);
+    }
 }
 
 
@@ -4587,6 +5059,13 @@ void callbackRaw(ref Value value, ubyte[] raw)
     value.via.raw = raw;
 }
 
+/// ditto
+@trusted
+void callbackExt(ref Value value, ubyte[] raw)
+{
+    value.type    = Value.Type.ext;
+    value.via.ext.data = raw;
+}
 
 /// ditto
 @trusted
@@ -4941,6 +5420,12 @@ enum Format : ubyte
     BIN8  = 0xc4,
     BIN16 = 0xc5,
     BIN32 = 0xc6,
+
+    // ext type
+    EXT   = 0xd4,  // fixext 1/2/4/8/16
+    EXT8  = 0xc7,
+    EXT16 = 0xc8,
+    EXT32 = 0xc9,
 
     // str type
     STR8  = 0xd9,
