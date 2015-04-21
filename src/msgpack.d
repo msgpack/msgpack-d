@@ -38,6 +38,7 @@ import std.traits;
 import std.typecons;
 import std.typetuple;
 import std.container;
+import std.json;
 
 // for RefBuffer
 version(Posix)
@@ -4232,6 +4233,221 @@ unittest
      * static struct NonMessagePackable {}
      * auto nonMessagePackable = value.as!(NonMessagePackable);
      */
+}
+
+
+/**
+ * Converts $(D Value) to $(D JSONValue).
+ *
+ * Params:
+ *  val = $(D Value) to convert.
+ *
+ * Returns:
+ *  a $(D JSONValue).
+ */
+@trusted
+JSONValue toJSONValue(in Value val)
+{
+    final switch (val.type)
+    {
+        case Value.Type.nil:      return JSONValue();
+        case Value.Type.boolean:  return JSONValue(val.via.boolean);
+        case Value.Type.unsigned: return JSONValue(val.via.uinteger);
+        case Value.Type.signed:   return JSONValue(val.via.integer);
+        case Value.Type.floating: return JSONValue(val.via.floating);
+        case Value.Type.raw:      return JSONValue(cast(string)(val.via.raw.idup));
+        case Value.Type.ext:      throw new MessagePackException("Unable to convert ext to json");
+        case Value.Type.array: {
+            JSONValue[] vals;
+            foreach (elem; val.via.array)
+                vals ~= elem.toJSONValue();
+            return JSONValue(vals);
+        }
+        case Value.Type.map: {
+            JSONValue[string] vals;
+            foreach (key, value; val.via.map) {
+                if (key.type != Value.Type.raw)
+                {
+                    throw new MessagePackException("JSON-object key must be a raw type");
+                }
+                vals[key.as!string] = value.toJSONValue();
+            }
+            return JSONValue(vals);
+        }
+    }
+}
+
+/**
+ * Converts $(D JSONValue) to $(D Value).
+ *
+ * Params:
+ *  val = $(D JSONValue) to convert.
+ *
+ * Returns:
+ *  a $(D Value).
+ */
+@trusted
+Value fromJSONValue(in JSONValue val)
+{
+    final switch (val.type())
+    {
+        case JSON_TYPE.NULL:      return Value();
+        case JSON_TYPE.TRUE:      return Value(true);
+        case JSON_TYPE.FALSE:     return Value(false);
+        case JSON_TYPE.UINTEGER:  return Value(val.uinteger);
+        case JSON_TYPE.INTEGER:   return Value(val.integer);
+        case JSON_TYPE.FLOAT:     return Value(val.floating);
+        case JSON_TYPE.STRING:    return Value(cast(ubyte[])(val.str));
+        case JSON_TYPE.ARRAY: {
+            Value[] vals;
+            foreach (elem; val.array)
+                vals ~= elem.fromJSONValue();
+            return Value(vals);
+        }
+        case JSON_TYPE.OBJECT: {
+            Value[Value] vals;
+            foreach (key, value; val.object) {
+                vals[Value(cast(ubyte[])key)] = value.fromJSONValue();
+            }
+            return Value(vals);
+        }
+    }
+}
+
+unittest
+{
+    import std.algorithm : equal, map;
+    import std.conv;
+    import std.math : approxEqual;
+
+    // nil
+    Value value = Value(null);
+
+    assert(toJSONValue(value).isNull);
+
+    // boolean
+    value = Value(true);
+    auto other = Value(false);
+
+    assert(toJSONValue(value).type() == JSON_TYPE.TRUE);
+    assert(toJSONValue(other).type() == JSON_TYPE.FALSE);
+
+    // unsigned integer
+    value = Value(10UL);
+
+    assert(value.toJSONValue().type == JSON_TYPE.UINTEGER);
+    assert(value.toJSONValue().uinteger == value.as!uint);
+    assert(value.toJSONValue().uinteger == 10UL);
+
+    // signed integer
+    value = Value(-20L);
+
+    assert(value.toJSONValue().type == JSON_TYPE.INTEGER);
+    assert(value.toJSONValue().integer == value.as!int);
+
+    // enum
+    enum E : int { F = -20 }
+    value = Value(cast(long)(E.F));
+
+    assert(value.toJSONValue().type == JSON_TYPE.INTEGER);
+    assert(value.toJSONValue().integer == E.F);
+
+    // floating point
+    value = Value(0.1e-10L);
+    other = Value(0.1e-20L);
+
+    assert(value.toJSONValue().type == JSON_TYPE.FLOAT);
+    assert(other.toJSONValue().type == JSON_TYPE.FLOAT);
+
+    assert(approxEqual(value.toJSONValue().floating, 0.1e-10L));
+    assert(approxEqual(other.toJSONValue().floating, 0.1e-20L));
+
+    // raw
+    long[] arr = [72, 105, 33];
+    value = Value(to!(ubyte[])(arr));
+
+    assert(value.toJSONValue().type == JSON_TYPE.STRING);
+    assert(equal(value.toJSONValue().str, arr));
+
+    // raw with string
+    value = Value("hello");
+    assert(value.toJSONValue().type == JSON_TYPE.STRING);
+    assert(value.toJSONValue().str == "hello");
+
+    // array
+    auto t = Value(to!(ubyte[])(arr));
+    value = Value([t]);
+    other = Value(array(map!(a => Value(a))(arr)));
+
+    assert(value.toJSONValue().type == JSON_TYPE.ARRAY);
+    assert(value.toJSONValue().array.length == 1);
+    assert(value.toJSONValue().array.front().type == JSON_TYPE.STRING);
+    assert(equal(value.toJSONValue().array.front().str, arr));
+    assert(other.toJSONValue().type == JSON_TYPE.ARRAY);
+    assert(array(map!(a => a.integer)(other.toJSONValue().array)) == arr);
+
+    // map
+    value = Value([Value("key"):Value(2L)]);
+
+    assert(value.toJSONValue().type == JSON_TYPE.OBJECT);
+    assert("key" in value.toJSONValue().object);
+    assert(value.toJSONValue().object["key"].type == JSON_TYPE.INTEGER);
+    assert(value.toJSONValue().object["key"].integer == 2L);
+
+    // struct
+    static struct Simple
+    {
+        @nonPacked int era;
+        double num;
+        string msg;
+    }
+
+    Simple simple;
+    simple.era = 5;
+    simple.num = 13.5;
+    simple.msg = "helloworld";
+    value = simple.pack().unpack().value;
+
+    assert(value.toJSONValue().type == JSON_TYPE.ARRAY);
+    assert(value.toJSONValue().array.length == 2);
+    assert(value.toJSONValue().array[0].type == JSON_TYPE.FLOAT);
+    assert(approxEqual(value.toJSONValue().array[0].floating, simple.num));
+    assert(value.toJSONValue().array[1].type == JSON_TYPE.STRING);
+    assert(value.toJSONValue().array[1].str == simple.msg);
+
+    // class
+    static class SimpleA
+    {
+        bool flag = true;
+    }
+
+    static class SimpleB : SimpleA
+    {
+        ubyte type = 100;
+    }
+
+    static class SimpleC : SimpleB
+    {
+        @nonPacked string str;
+        uint num = uint.max;
+    }
+
+    SimpleC sc = new SimpleC;
+    value = sc.pack!true().unpack().value;
+
+    assert(value.toJSONValue().type == JSON_TYPE.OBJECT);
+    assert(value.toJSONValue().object.length == 3);
+    assert("flag" in value.toJSONValue().object);
+    assert(value.toJSONValue().object["flag"].type == (sc.flag ? JSON_TYPE.TRUE : JSON_TYPE.FALSE));
+    assert("type" in value.toJSONValue().object);
+    assert(value.toJSONValue().object["type"].type == JSON_TYPE.UINTEGER);
+    assert(value.toJSONValue().object["type"].uinteger == sc.type);
+    assert("num" in value.toJSONValue().object);
+    assert(value.toJSONValue().object["num"].type == JSON_TYPE.UINTEGER);
+    assert(value.toJSONValue().object["num"].uinteger == sc.num);
+
+    other = value.toJSONValue().fromJSONValue();
+    assert(value == other);
 }
 
 
