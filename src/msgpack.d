@@ -4250,7 +4250,7 @@ JSONValue toJSONValue(in Value val)
 {
     final switch (val.type)
     {
-        case Value.Type.nil:      return JSONValue();
+        case Value.Type.nil:      return JSONValue(null);
         case Value.Type.boolean:  return JSONValue(val.via.boolean);
         case Value.Type.unsigned: return JSONValue(val.via.uinteger);
         case Value.Type.signed:   return JSONValue(val.via.integer);
@@ -4291,7 +4291,7 @@ Value fromJSONValue(in JSONValue val)
 {
     final switch (val.type())
     {
-        case JSON_TYPE.NULL:      return Value();
+        case JSON_TYPE.NULL:      return Value(null);
         case JSON_TYPE.TRUE:      return Value(true);
         case JSON_TYPE.FALSE:     return Value(false);
         case JSON_TYPE.UINTEGER:  return Value(val.uinteger);
@@ -4323,7 +4323,7 @@ unittest
     // nil
     Value value = Value(null);
 
-    assert(toJSONValue(value).isNull);
+    assert(toJSONValue(value).type() == JSON_TYPE.NULL);
 
     // boolean
     value = Value(true);
