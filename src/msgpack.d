@@ -83,8 +83,31 @@ static if (real.sizeof == double.sizeof) {
     import std.numeric;
 }
 
-// for pack/unpack without calling constructor
-private extern(C) Object _d_newclass(in ClassInfo);
+// for unpack without calling constructor
+private
+{
+    version(LDC)
+        extern(C) Object _d_allocclass(in ClassInfo);
+    else
+        extern(C) Object _d_newclass(in ClassInfo);
+
+    Object newClassWithoutConstructor(in ClassInfo classInfo)
+    {
+        version(LDC)
+        {
+            // LDC doesn't have _d_newclass so using _d_allocclass and
+            // explicit initialization by ClassInfo.init to simulate _d_newclass.
+            // See http://www.dsource.org/projects/ldc/wiki/RuntimeInterface and Orange
+            Object obj = _d_allocclass(classInfo);
+            (cast(byte*)obj)[0..classInfo.init.length] = classInfo.init[];
+            return obj;
+        }
+        else
+        {
+            return _d_newclass(classInfo);
+        }
+    }
+}
 
 version(unittest) import std.file, core.stdc.string;
 
@@ -2672,7 +2695,7 @@ struct Unpacker
                 static if (__traits(compiles, { new T(); }))
                     object = new T();
                 else
-                    object = cast(T)_d_newclass(T.classinfo);
+                    object = cast(T)newClassWithoutConstructor(T.classinfo);
             } else static if (__traits(compiles, { new T(args); })) {
                 object = new T(args);
             } else {
