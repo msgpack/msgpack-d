@@ -83,6 +83,32 @@ static if (real.sizeof == double.sizeof) {
     import std.numeric;
 }
 
+// for unpack without calling constructor
+private
+{
+    version(LDC)
+        extern(C) Object _d_allocclass(in ClassInfo);
+    else
+        extern(C) Object _d_newclass(in ClassInfo);
+
+    Object newClassWithoutConstructor(in ClassInfo classInfo)
+    {
+        version(LDC)
+        {
+            // LDC doesn't have _d_newclass so using _d_allocclass and
+            // explicit initialization by ClassInfo.init to simulate _d_newclass.
+            // See http://www.dsource.org/projects/ldc/wiki/RuntimeInterface and Orange
+            Object obj = _d_allocclass(classInfo);
+            (cast(byte*)obj)[0..classInfo.init.length] = classInfo.init[];
+            return obj;
+        }
+        else
+        {
+            return _d_newclass(classInfo);
+        }
+    }
+}
+
 version(unittest) import std.file, core.stdc.string;
 
 
@@ -334,6 +360,13 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
         {
             packHandlers[typeid(T)] = delegate(ref PackerImpl packer, void* obj) {
                 Handler(packer, *cast(T*)obj);
+            };
+        }
+
+        public void register(T)()
+        {
+            packHandlers[typeid(T)] = delegate(ref PackerImpl packer, void* obj) {
+                packer.packObject(*cast(T*)obj);
             };
         }
     }
@@ -839,30 +872,7 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
                 throw new MessagePackException("Can't pack derived class through reference to base class.");
             }
 
-            alias SerializingClasses!(T) Classes;
-
-            immutable memberNum = SerializingMemberNumbers!(Classes);
-            if (withFieldName_)
-                beginMap(memberNum);
-            else
-                beginArray(memberNum);
-
-            foreach (Class; Classes) {
-                Class obj = cast(Class)object;
-                if (withFieldName_) {
-                    foreach (i, f ; obj.tupleof) {
-                        static if (isPackedField!(Class.tupleof[i])) {
-                            pack(getFieldName!(Class, i));
-                            pack(f);
-                        }
-                    }
-                } else {
-                    foreach (i, f ; obj.tupleof) {
-                        static if (isPackedField!(Class.tupleof[i]))
-                            pack(f);
-                    }
-                }
-            }
+            packObject!(T)(object);
         }
 
         return this;
@@ -917,6 +927,35 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
         }
 
         return this;
+    }
+
+
+    void packObject(T)(in T object) if (is(Unqual!T == class))
+    {
+        alias SerializingClasses!(T) Classes;
+
+        immutable memberNum = SerializingMemberNumbers!(Classes);
+        if (withFieldName_)
+            beginMap(memberNum);
+        else
+            beginArray(memberNum);
+
+        foreach (Class; Classes) {
+            Class obj = cast(Class)object;
+            if (withFieldName_) {
+                foreach (i, f ; obj.tupleof) {
+                    static if (isPackedField!(Class.tupleof[i])) {
+                        pack(getFieldName!(Class, i));
+                        pack(f);
+                    }
+                }
+            } else {
+                foreach (i, f ; obj.tupleof) {
+                    static if (isPackedField!(Class.tupleof[i]))
+                        pack(f);
+                }
+            }
+        }
     }
 
 
@@ -2113,6 +2152,14 @@ struct Unpacker
                 Handler(unpacker, *cast(T*)obj);
             };
         }
+
+        public void register(T)()
+        {
+            unpackHandlers[typeid(T)] = delegate(ref Unpacker unpacker, void* obj) {
+                unpacker.unpackObject(*cast(T*)obj);
+            };
+        }
+
     }
 
     enum Offset = 1;
@@ -2644,11 +2691,16 @@ struct Unpacker
             return unpackNil(object);
 
         if (object is null) {
-            //static if (is(typeof(new T(args))))
-            static if (__traits(compiles, { new T(args); }))
+            static if (Args.length == 0) {
+                static if (__traits(compiles, { new T(); }))
+                    object = new T();
+                else
+                    object = cast(T)newClassWithoutConstructor(T.classinfo);
+            } else static if (__traits(compiles, { new T(args); })) {
                 object = new T(args);
-            else
+            } else {
                 throw new MessagePackException("Don't know how to construct class type '" ~ Unqual!T.stringof ~ "' with argument types '" ~ Args.stringof ~ "'.");
+            }
         }
 
         static if (hasMember!(T, "fromMsgpack"))
@@ -2669,48 +2721,7 @@ struct Unpacker
                 throw new MessagePackException("Can't unpack derived class through reference to base class.");
             }
 
-            alias SerializingClasses!(T) Classes;
-
-            size_t length = withFieldName_ ? beginMap() : beginArray();
-            if (length == 0)
-                return this;
-
-            if (length != SerializingMemberNumbers!(Classes))
-                rollback(calculateSize(length));
-
-            if (withFieldName_) {
-                foreach (_; 0..length) {
-                    string fieldName;
-                    unpack(fieldName);
-
-                    foreach (Class; Classes) {
-                        Class obj = cast(Class)object;
-
-                        foreach (i, member; obj.tupleof) {
-                            static if (isPackedField!(Class.tupleof[i]))
-                            {
-                                if (fieldName == getFieldName!(Class, i)) {
-                                    unpack(obj.tupleof[i]);
-                                    goto endLoop;
-                                }
-                            }
-                        }
-                    }
-                    assert(false, "Invalid field name: '" ~ fieldName~"' ");
-
-                endLoop:
-                    continue;
-                }
-            } else {
-                foreach (Class; Classes) {
-                    Class obj = cast(Class)object;
-
-                    foreach (i, member; obj.tupleof) {
-                        static if (isPackedField!(Class.tupleof[i]))
-                            unpack(obj.tupleof[i]);
-                    }
-                }
-            }
+            unpackObject(object);
         }
 
         return this;
@@ -2757,6 +2768,53 @@ struct Unpacker
         }
 
         return this;
+    }
+
+
+    void unpackObject(T)(ref T object) if (is(Unqual!T == class))
+    {
+        alias SerializingClasses!(T) Classes;
+
+        size_t length = withFieldName_ ? beginMap() : beginArray();
+        if (length == 0)
+            return;
+
+        if (length != SerializingMemberNumbers!(Classes))
+            rollback(calculateSize(length));
+
+        if (withFieldName_) {
+            foreach (_; 0..length) {
+                string fieldName;
+                unpack(fieldName);
+
+                foreach (Class; Classes) {
+                    Class obj = cast(Class)object;
+
+                    foreach (i, member; obj.tupleof) {
+                        static if (isPackedField!(Class.tupleof[i]))
+                        {
+                            if (fieldName == getFieldName!(Class, i)) {
+                                unpack(obj.tupleof[i]);
+                                goto endLoop;
+                            }
+                        }
+                    }
+                }
+                assert(false, "Invalid field name: '" ~ fieldName~"' ");
+
+            endLoop:
+                continue;
+            }
+        } else {
+            foreach (Class; Classes) {
+                Class obj = cast(Class)object;
+
+                foreach (i, member; obj.tupleof) {
+                    static if (isPackedField!(Class.tupleof[i]))
+                        unpack(obj.tupleof[i]);
+                }
+            }
+        }
     }
 
 
@@ -3124,6 +3182,21 @@ void registerUnpackHandler(T, alias Handler)()
 }
 
 
+/**
+ * Register derived class for (de)serialization
+ *
+ * Example:
+ * -----
+ * registerClass!(DerivedClass);
+ * -----
+ */
+void registerClass(T, Stream = Appender!(ubyte[]))()
+{
+    PackerImpl!(Stream).register!(T);
+    Unpacker.register!(T);
+}
+
+
 unittest
 {
     { // unique
@@ -3413,11 +3486,10 @@ unittest
 
             Issue16 c1 = new Issue16(10);
 
-            try {
-                Issue16 c2 = null;
-                unpack(pack(c1), c2);
-                assert(false);
-            } catch (Exception e) {}
+            // change behaviour to accept null with new object without constructor
+            Issue16 c2 = null;
+            unpack(pack(c1), c2);
+            assert(c2.i == c1.i);
 
             Issue16 c3 = new Issue16(20);
             unpack(pack(c1), c3);
