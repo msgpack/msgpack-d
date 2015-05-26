@@ -1,13 +1,14 @@
 language: d
 
 d:
-  - dmd-2.067.0
-  - dmd-2.066.1
+  - dmd
+  - gdc
+  - ldc
 
 install:
 
 script:
-  - MODEL=64 make -f posix.mak unittest
+  - dub test --compiler=${DC}
 
 branches:
   only:
@@ -15,3 +16,9 @@ branches:
 
 notifications:
   email: true
+
+sudo: false
+
+matrix:
+  allow_failures:
+    - d: ldc
