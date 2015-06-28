@@ -1278,7 +1278,7 @@ struct RefBuffer
      *  the array of iovec struct that stores references.
      */
     @property @safe
-    nothrow ref iovec[] vector()
+    nothrow ref iovec[] vector() return
     {
         return vecList_;
     }
@@ -2949,7 +2949,7 @@ struct Unpacker
      *  is thrown if the lengths do not match.  If $(D data) is null, a new slice
      *  is returned.
      */
-    ref Unpacker unpackExt(ref byte type, ref ubyte[] data)
+    ref Unpacker unpackExt(ref byte type, ref ubyte[] data) return
     {
         import std.conv : text;
 
@@ -4086,7 +4086,7 @@ struct Value
             return false;
 
         return via.ext.type == other.type && via.ext.data == other.data;
-    } 
+    }
 
 
     @trusted
