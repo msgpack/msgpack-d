@@ -739,8 +739,7 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
 
 
     /// ditto
-    ref PackerImpl pack(T)(in T array) if (isArray!T ||
-                                           isInstanceOf!(Array, T))
+    ref PackerImpl pack(T)(in T array) if ((isArray!T || isInstanceOf!(Array, T)) && !is(Unqual!T == enum))
     {
         alias typeof(T.init[0]) U;
 
@@ -1605,6 +1604,14 @@ unittest
 
         auto answer = E.A;
         assert(memcmp(&packer.stream.data[1], &answer, (OriginalType!E).sizeof) == 0);
+    }
+    { // enum with string
+        enum E2 : string { A = "test" }
+
+        mixin DefinePacker; E2 e = E2.A;
+
+        packer.pack(e);
+        assert(packer.stream.data[0] == (Format.RAW | 0x04));
     }
     { // container
         static struct CTest { ubyte format; size_t value; }
