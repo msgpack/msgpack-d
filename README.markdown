@@ -20,6 +20,7 @@ Note that `Unpacker` will raise an exception if a loss of precision occurs.
 ## Current Limitations
 
 * No circular references support
+* if you use the LDC compiler you need at least version 0.15.2 beta2
 
 # Install
 
