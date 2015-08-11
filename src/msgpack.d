@@ -1373,8 +1373,17 @@ unittest
     assert(b.a_bool == true);
     assert(b.a_double == double.max);
     
+    struct Simple
+    {
+      @property string[string] a_map;
+    }
     
+    ubyte[] simpledata = cast(ubyte[]) [129, 165, 97, 95, 109, 97, 112, 129, 161, 97, 161, 97]; // ruby -e 'puts {"a_map": {"a": "a"}}.to_msgpack.bytes'
+    Simple s = simpledata.unpack!(Simple, true)();
+    assert(s.a_map["a"] == "a");
 }
+
+
 
 unittest
 {
