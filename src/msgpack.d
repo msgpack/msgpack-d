@@ -1348,7 +1348,7 @@ struct RefBuffer
 unittest
 {
   //test unpacking of messages with field names
-  shared struct Test 
+  struct Test 
   {
     @property string a_string;
     @property  int[string] a_map;
@@ -1359,7 +1359,7 @@ unittest
     @property  double a_double;
   }
 
-    shared(int[string]) a_map;
+    int[string] a_map;
     a_map = ["monday": 1, "tuesday": 2]; 
     Test a = Test("attribute a", a_map, "I ❤"d, long.min, ulong.max, true, double.max );
 
@@ -1372,6 +1372,8 @@ unittest
     assert(b.a_ulong == ulong.max);
     assert(b.a_bool == true);
     assert(b.a_double == double.max);
+    
+    
 }
 
 unittest
