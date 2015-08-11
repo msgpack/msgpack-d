@@ -1347,6 +1347,35 @@ struct RefBuffer
 
 unittest
 {
+  //test unpacking of messages with field names
+  shared struct Test 
+  {
+    @property string a_string;
+    @property  int[string] a_map;
+    @property dstring a_dchar;
+    @property  long a_long;
+    @property  ulong a_ulong;
+    @property  bool a_bool;
+    @property  double a_double;
+  }
+
+    shared(int[string]) a_map;
+    a_map = ["monday": 1, "tuesday": 2]; 
+    Test a = Test("attribute a", a_map, "I ❤"d, long.min, ulong.max, true, double.max );
+
+    auto p = a.pack!true();
+ 
+    auto b = p.unpack!(Test, true)();
+    assert(b.a_string == "attribute a");
+    assert(b.a_dchar == "I ❤"d);
+    assert(b.a_long == long.min);
+    assert(b.a_ulong == ulong.max);
+    assert(b.a_bool == true);
+    assert(b.a_double == double.max);
+}
+
+unittest
+{
     static assert(isOutputRange!(RefBuffer, ubyte) &&
                   isOutputRange!(RefBuffer, ubyte[]));
 
