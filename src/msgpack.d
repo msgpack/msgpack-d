@@ -2729,7 +2729,7 @@ struct Unpacker
                 return this;
             }
 
-            auto length = beginArray();
+            size_t length = withFieldName_ ? beginMap() : beginArray();
             if (length == 0)
                 return this;
 
@@ -2744,9 +2744,25 @@ struct Unpacker
                 if (length != SerializingMemberNumbers!(T))
                     rollback(calculateSize(length));
 
-                foreach (i, member; object.tupleof) {
-                    static if (isPackedField!(T.tupleof[i]))
-                        unpack(object.tupleof[i]);
+                if (withFieldName_) {
+                    foreach (i, member; object.tupleof) {
+                        static if (isPackedField!(T.tupleof[i]))
+                        {
+                            string fieldName;
+                            unpack(fieldName);
+
+                            if (fieldName == getFieldName!(T, i)) {
+                                unpack(object.tupleof[i]);
+                            } else {
+                                assert(false, "Invalid field name: '" ~ fieldName ~ "', expect '" ~ getFieldName!(T, i) ~ "'");
+                            }
+                        }
+                    }
+                } else {
+                    foreach (i, member; object.tupleof) {
+                        static if (isPackedField!(T.tupleof[i]))
+                            unpack(object.tupleof[i]);
+                    }
                 }
             }
         }
