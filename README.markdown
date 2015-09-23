@@ -67,6 +67,17 @@ void main()
     assert(target.x == input.x);
     assert(target.y == input.y);
     assert(target.z == input.z);
+		
+		//serialize with fieldnames:
+		ubyte[] packedWithFields = input.pack!true();
+		
+		// deserialize with fieldnames:
+		S target2 = packedWithFields.unpack!(S, true)();
+		
+		// verify data is the same
+    assert(target2.x == input.x);
+    assert(target2.y == input.y);
+    assert(target2.z == input.z);
 }
 ```
 
