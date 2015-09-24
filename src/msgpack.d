@@ -2174,7 +2174,8 @@ struct Unpacker
     @safe
     nothrow void clear()
     {
-        parsed_ = 0;
+        used_ = offset_ = parsed_ = 0;
+        hasRaw_ = false;
     }
 
 
