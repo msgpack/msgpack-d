@@ -832,9 +832,9 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
 
         static if (hasMember!(T, "toMsgpack"))
         {
-            static if (__traits(compiles, { T t; t.toMsgpack(this, withFieldName_); })) {
+            static if (__traits(compiles, { object.toMsgpack(this, withFieldName_); })) {
                 object.toMsgpack(this, withFieldName_);
-            } else static if (__traits(compiles, { T t; t.toMsgpack(this); })) { // backward compatible
+            } else static if (__traits(compiles, { object.toMsgpack(this); })) { // backward compatible
                 object.toMsgpack(this);
             } else {
                 static assert(0, "Failed to invoke 'toMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
@@ -863,9 +863,9 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
     {
         static if (hasMember!(T, "toMsgpack"))
         {
-            static if (__traits(compiles, { T t; t.toMsgpack(this, withFieldName_); })) {
+            static if (__traits(compiles, { object.toMsgpack(this, withFieldName_); })) {
                 object.toMsgpack(this, withFieldName_);
-            } else static if (__traits(compiles, { T t; t.toMsgpack(this); })) { // backward compatible
+            } else static if (__traits(compiles, { object.toMsgpack(this); })) { // backward compatible
                 object.toMsgpack(this);
             } else {
                 static assert(0, "Failed to invoke 'toMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
@@ -2690,9 +2690,9 @@ struct Unpacker
 
         static if (hasMember!(T, "fromMsgpack"))
         {
-            static if (__traits(compiles, { T t; t.fromMsgpack(this, withFieldName_); })) {
+            static if (__traits(compiles, { object.fromMsgpack(this, withFieldName_); })) {
               object.fromMsgpack(this, withFieldName_);
-            } else static if (__traits(compiles, { T t; t.fromMsgpack(this); })) { // backward compatible
+            } else static if (__traits(compiles, { object.fromMsgpack(this); })) { // backward compatible
                 object.fromMsgpack(this);
             } else {
                 static assert(0, "Failed to invoke 'fromMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
@@ -2719,7 +2719,7 @@ struct Unpacker
     {
         static if (hasMember!(T, "fromMsgpack"))
         {
-            static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
+            static if (__traits(compiles, { object.fromMsgpack(this); })) {
                 object.fromMsgpack(this);
             } else {
                 static assert(0, "Failed to invoke 'fromMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
@@ -3855,7 +3855,7 @@ struct Value
 
         static if (hasMember!(T, "fromMsgpack"))
         {
-            static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
+            static if (__traits(compiles, { object.fromMsgpack(this); })) {
                 object.fromMsgpack(this);
             } else {
                 static assert(0, "Failed to invoke 'fromMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
@@ -3888,7 +3888,7 @@ struct Value
 
         static if (hasMember!(T, "fromMsgpack"))
         {
-            static if (__traits(compiles, { T t; t.fromMsgpack(this); })) {
+            static if (__traits(compiles, { obj.fromMsgpack(this); })) {
                 obj.fromMsgpack(this);
             } else {
                 static assert(0, "Failed to invoke 'fromMsgpack' on type '" ~ Unqual!T.stringof ~ "'");
