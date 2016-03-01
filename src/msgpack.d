@@ -5032,10 +5032,10 @@ struct StreamingUnpacker
                     callbackUInt(obj, buffer_[base]);
                     goto Lpush;
                 case State.UINT16:
-                    callbackUInt(obj, load16To!ulong(buffer_[base..base + trail]));
+                    callbackUInt(obj, load16To!ushort(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.UINT32:
-                    callbackUInt(obj, load32To!ulong(buffer_[base..base + trail]));
+                    callbackUInt(obj, load32To!uint(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.UINT64:
                     callbackUInt(obj, load64To!ulong(buffer_[base..base + trail]));
@@ -5044,10 +5044,10 @@ struct StreamingUnpacker
                     callbackInt(obj, cast(byte)buffer_[base]);
                     goto Lpush;
                 case State.INT16:
-                    callbackInt(obj, load16To!long(buffer_[base..base + trail]));
+                    callbackInt(obj, load16To!short(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.INT32:
-                    callbackInt(obj, load32To!long(buffer_[base..base + trail]));
+                    callbackInt(obj, load32To!int(buffer_[base..base + trail]));
                     goto Lpush;
                 case State.INT64:
                     callbackInt(obj, load64To!long(buffer_[base..base + trail]));
