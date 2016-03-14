@@ -1,6 +1,6 @@
 module msgpack.attribute;
 
-import std.meta;
+import std.typetuple; // will use std.meta
 import std.traits;
 
 

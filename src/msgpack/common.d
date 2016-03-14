@@ -4,8 +4,7 @@ module msgpack.common;
 
 import msgpack.attribute;
 
-import std.meta;
-import std.typetuple;
+import std.typetuple; // will use std.meta
 import std.traits;
 
 
