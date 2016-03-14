@@ -24,8 +24,7 @@ Note that `Unpacker` will raise an exception if a loss of precision occurs.
 
 # Install
 
-msgpack-d is implemented as a single module. Either copy `src/msgpack.d` to your project
-or use dub to add it as a dependency:
+Use dub to add it as a dependency:
 
 ```sh
 % dub install msgpack-d
