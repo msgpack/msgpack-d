@@ -11,7 +11,7 @@ import std.traits;
 // for Converting Endian using ntohs and ntohl;
 version(Windows)
 {
-    package import std.c.windows.winsock;
+    package import core.sys.windows.winsock2;
 }
 else
 {
