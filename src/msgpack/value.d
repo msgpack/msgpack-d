@@ -406,7 +406,7 @@ struct Value
     {
         final switch (type) {
         case Type.nil:
-            packer.packNil();
+            packer.pack(null);
             break;
         case Type.boolean:
             packer.pack(via.boolean);
