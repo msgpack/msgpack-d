@@ -425,29 +425,6 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
     {
         alias typeof(T.init[0]) U;
 
-        /*
-         * Serializes raw type-information to stream.
-         */
-        void beginRaw(in size_t length)
-        {
-            if (length < 32) {
-                const ubyte temp = Format.RAW | cast(ubyte)length;
-                stream_.put(take8from(temp));
-            } else if (length < 65536) {
-                const temp = convertEndianTo!16(length);
-
-                store_[0] = Format.RAW16;
-                *cast(ushort*)&store_[Offset] = temp;
-                stream_.put(store_[0..Offset + ushort.sizeof]);
-            } else {
-                const temp = convertEndianTo!32(length);
-
-                store_[0] = Format.RAW32;
-                *cast(uint*)&store_[Offset] = temp;
-                stream_.put(store_[0..Offset + uint.sizeof]);
-            }
-        }
-
         if (array.empty)
             return packNil();
 
@@ -767,6 +744,33 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
         return this;
     }
 
+    /*
+     * Serializes raw type-information to stream for binary type.
+     */
+    void beginRaw(in size_t length)
+    {
+        import std.conv : text;
+
+        if (length < 32) {
+            const ubyte temp = Format.RAW | cast(ubyte)length;
+            stream_.put(take8from(temp));
+        } else if (length < 65536) {
+            const temp = convertEndianTo!16(length);
+
+            store_[0] = Format.RAW16;
+            *cast(ushort*)&store_[Offset] = temp;
+            stream_.put(store_[0..Offset + ushort.sizeof]);
+        } else {
+            if (length > 0xffffffff)
+                throw new MessagePackException(text("size of raw is too long to pack: ", length,  " bytes should be <= ", 0xffffffff));
+
+            const temp = convertEndianTo!32(length);
+
+            store_[0] = Format.RAW32;
+            *cast(uint*)&store_[Offset] = temp;
+            stream_.put(store_[0..Offset + uint.sizeof]);
+        }
+    }
 
     /**
      * Serializes the type-information to stream.
@@ -1096,9 +1100,10 @@ unittest
         static CTest[][] ctests = [
             [{Format.ARRAY | A, Format.ARRAY | A}, {Format.ARRAY16, B}, {Format.ARRAY32, C}],
             [{Format.MAP   | A, Format.MAP   | A}, {Format.MAP16,   B}, {Format.MAP32,   C}],
+            [{Format.RAW   | A, Format.RAW   | A}, {Format.RAW16,   B}, {Format.RAW32,   C}],
         ];
 
-        foreach (I, Name; TypeTuple!("Array", "Map")) {
+        foreach (I, Name; TypeTuple!("Array", "Map", "Raw")) {
             auto test = ctests[I];
 
             foreach (i, T; TypeTuple!(ubyte, ushort, uint)) {
@@ -1121,6 +1126,16 @@ unittest
                     assert(memcmp(&packer.stream.data[1], &answer, uint.sizeof) == 0);
                 }
             }
+        }
+    }
+    { // larger spec size for string / binary
+        mixin DefinePacker;
+
+        try {
+            byte[] bins = new byte[0xffffffffUL + 1];
+            packer.pack(bins);
+            assert(false);
+        } catch (MessagePackException e) {
         }
     }
     { // user defined
