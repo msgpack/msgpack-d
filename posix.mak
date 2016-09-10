@@ -18,9 +18,9 @@ else
 	DFLAGS += -O -release -nofloat -inline -noboundscheck
 endif
 
-NAMES = msgpack
+NAMES = attribute common package register unpacker buffer exception packer streaming_unpacker  value
 FILES = $(addsuffix .d, $(NAMES))
-SRCS  = $(addprefix src/, $(FILES))
+SRCS  = $(addprefix src/msgpack/, $(FILES))
 
 # DDoc
 DOCS      = $(addsuffix .html, $(NAMES))
@@ -47,4 +47,4 @@ unittest:
 	rm $(MAIN_FILE)
 
 run_examples:
-	echo example/* | xargs -n 1 dmd src/msgpack.d $(DFLAGS) -Isrc -run
+	echo example/* | xargs -n 1 dmd src/msgpack/*.d $(DFLAGS) -Isrc -run
