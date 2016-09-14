@@ -136,7 +136,7 @@ struct Unpacker
             value = false;
             break;
         default:
-            rollback();
+            rollback(0, "bool", cast(Format)header);
         }
 
         return this;
@@ -161,25 +161,25 @@ struct Unpacker
                 canRead(ushort.sizeof);
                 auto us = load16To!ushort(read(ushort.sizeof));
                 if (us > T.max)
-                    rollback(ushort.sizeof);
+                    rollback(ushort.sizeof, T.stringof, Format.UINT16);
                 value = cast(T)us;
                 break;
             case Format.UINT32:
                 canRead(uint.sizeof);
                 auto ui = load32To!uint(read(uint.sizeof));
                 if (ui > T.max)
-                    rollback(uint.sizeof);
+                    rollback(uint.sizeof, T.stringof, Format.UINT32);
                 value = cast(T)ui;
                 break;
             case Format.UINT64:
                 canRead(ulong.sizeof);
                 auto ul = load64To!ulong(read(ulong.sizeof));
                 if (ul > T.max)
-                    rollback(ulong.sizeof);
+                    rollback(ulong.sizeof, T.stringof, Format.UINT64);
                 value = cast(T)ul;
                 break;
             default:
-                rollback();
+                rollback(0, T.stringof, cast(Format)header);
             }
         }
 
@@ -203,28 +203,28 @@ struct Unpacker
                 canRead(ubyte.sizeof);
                 auto ub = read();
                 if (ub > T.max)
-                    rollback(ubyte.sizeof);
+                    rollback(ubyte.sizeof, T.stringof, Format.UINT8);
                 value = cast(T)ub;
                 break;
             case Format.UINT16:
                 canRead(ushort.sizeof);
                 auto us = load16To!ushort(read(ushort.sizeof));
                 if (us > T.max)
-                    rollback(ushort.sizeof);
+                    rollback(ushort.sizeof, T.stringof, Format.UINT16);
                 value = cast(T)us;
                 break;
             case Format.UINT32:
                 canRead(uint.sizeof);
                 auto ui = load32To!uint(read(uint.sizeof));
                 if (ui > T.max)
-                    rollback(uint.sizeof);
+                    rollback(uint.sizeof, T.stringof, Format.UINT32);
                 value = cast(T)ui;
                 break;
             case Format.UINT64:
                 canRead(ulong.sizeof);
                 auto ul = load64To!ulong(read(ulong.sizeof));
                 if (ul > T.max)
-                    rollback(ulong.sizeof);
+                    rollback(ulong.sizeof, T.stringof, Format.UINT64);
                 value = cast(T)ul;
                 break;
             case Format.INT8:
@@ -235,25 +235,25 @@ struct Unpacker
                 canRead(short.sizeof);
                 auto s = load16To!short(read(short.sizeof));
                 if (s < T.min || T.max < s)
-                    rollback(short.sizeof);
+                    rollback(short.sizeof, T.stringof, Format.INT16);
                 value = cast(T)s;
                 break;
             case Format.INT32:
                 canRead(int.sizeof);
                 auto i = load32To!int(read(int.sizeof));
                 if (i < T.min || T.max < i)
-                    rollback(int.sizeof);
+                    rollback(int.sizeof, T.stringof, Format.INT32);
                 value = cast(T)i;
                 break;
             case Format.INT64:
                 canRead(long.sizeof);
                 auto l = load64To!long(read(long.sizeof));
                 if (l < T.min || T.max < l)
-                    rollback(long.sizeof);
+                    rollback(long.sizeof, T.stringof, Format.INT64);
                 value = cast(T)l;
                 break;
             default:
-                rollback();
+                rollback(0, T.stringof, cast(Format)header);
             }
         }
 
@@ -294,7 +294,7 @@ struct Unpacker
         case Format.DOUBLE:
             // check precision loss
             static if (is(Unqual!T == float))
-                rollback();
+                rollback(0, T.stringof, Format.DOUBLE);
 
             _d temp;
 
@@ -305,13 +305,13 @@ struct Unpacker
         case Format.REAL:
             static if (!EnableReal)
             {
-                rollback();
+                rollback(0, "real is disabled", Format.REAL);
             }
             else
             {
                 // check precision loss
                 static if (is(Unqual!T == float) || is(Unqual!T == double))
-                    rollback();
+                    rollback(0, T.stringof, Format.REAL);
 
                 canRead(RealSize);
 
@@ -342,7 +342,7 @@ struct Unpacker
 
             break;
         default:
-            rollback();
+            rollback(0, T.stringof, cast(Format)header);
         }
 
         return this;
@@ -415,7 +415,7 @@ struct Unpacker
                 length = load32To!uint(read(4));
                 break;
             default:
-                rollback();
+                rollback(0, T.stringof, cast(Format)header);
         }
 
         canRead(1 + length);
@@ -493,7 +493,7 @@ struct Unpacker
                 case Format.NIL:
                     break;
                 default:
-                    rollback();
+                    rollback(0, T.stringof, cast(Format)header);
                 }
             }
 
@@ -503,7 +503,7 @@ struct Unpacker
 
         if (checkNil()) {
             static if (isStaticArray!T) {
-                onInvalidType();
+                onInvalidType("static array", Format.NIL);
             } else {
                 return unpackNil(array);
             }
@@ -518,7 +518,7 @@ struct Unpacker
 
             static if (isStaticArray!T) {
                 if (length != array.length)
-                    rollback(offset);
+                    rollback(offset, "static array was given but the length is mismatched");
             }
 
             canRead(length, offset + Offset);
@@ -537,7 +537,7 @@ struct Unpacker
 
             static if (isStaticArray!T) {
                 if (length != array.length)
-                    rollback(calculateSize(length));
+                    rollback(calculateSize(length), "static array was given but the length is mismatched");
             } else {
                 array.length = length;
             }
@@ -656,14 +656,14 @@ struct Unpacker
 
             static if (isTuple!T) {
                 if (length != T.Types.length)
-                    rollback(calculateSize(length));
+                    rollback(calculateSize(length), "the number of tuple fields is mismatched");
 
                 foreach (i, Type; T.Types)
                     unpack(object.field[i]);
             } else {  // simple struct
                 //if (length != object.tupleof.length)
                 if (length != SerializingMemberNumbers!(T))
-                    rollback(calculateSize(length));
+                    rollback(calculateSize(length), "the number of struct fields is mismatched");
 
                 if (withFieldName_) {
                     foreach (i, member; object.tupleof) {
@@ -701,7 +701,7 @@ struct Unpacker
             return;
 
         if (length != SerializingMemberNumbers!(Classes))
-            rollback(calculateSize(length));
+            rollback(calculateSize(length),  "the number of class fields is mismatched");
 
         if (withFieldName_) {
             foreach (_; 0..length) {
@@ -757,7 +757,7 @@ struct Unpacker
     {
         auto length = beginArray();
         if (length != Types.length)
-            rollback(calculateSize(length));
+            rollback(calculateSize(length), "the number of deserialized objects is mismatched");
 
         foreach (i, T; Types)
             unpack(objects[i]);
@@ -774,7 +774,7 @@ struct Unpacker
 
         auto length = beginMap();
         if (length != Types.length / 2)
-            rollback(calculateSize(length));
+            rollback(calculateSize(length), "the number of deserialized objects is mismatched");
 
         foreach (i, T; Types)
             unpack(objects[i]);
@@ -824,7 +824,7 @@ struct Unpacker
             case Format.NIL:
                 break;
             default:
-                rollback();
+                rollback(0, "array", cast(Format)header);
             }
         }
 
@@ -855,7 +855,7 @@ struct Unpacker
             case Format.NIL:
                 break;
             default:
-                rollback();
+                rollback(0, "map", cast(Format)header);
             }
         }
 
@@ -904,7 +904,7 @@ struct Unpacker
                     rollbackLength = 4;
                     break;
                 default:
-                    rollback();
+                    rollback(0, "ext", cast(Format)header);
             }
 
         }
@@ -915,19 +915,13 @@ struct Unpacker
         byte type_ = read();
         rollbackLength += 1;
         if (type_ != type)
-        {
-            rollback(rollbackLength);
-            throw new MessagePackException(text("Cannot unpack EXT of type ",
-                                                type_, " into type ", type));
-        }
+            rollback(rollbackLength, text("Cannot unpack EXT of type ", type_, " into type ", type));
 
         // Read and check data
         if (data is null)
             data = new ubyte[](length);
         else if (data.length != length) {
-            rollback(rollbackLength);
-            throw new MessagePackException(text("Length mismatch while unpacking EXT: ",
-                            data.length, " was given, actual length is ", length));
+            rollback(rollbackLength, text("Length mismatch while unpacking EXT: ", data.length, " was given, actual length is ", length));
         }
         data[] = read(length);
         return this;
@@ -960,7 +954,7 @@ struct Unpacker
         while (used_ - offset_) {
             auto length = beginArray();
             if (length != Types.length)
-                rollback(calculateSize(length));
+                rollback(calculateSize(length), "the number of deserialized objects is mismatched");
 
             Types objects;
             foreach (i, T; Types)
@@ -998,7 +992,7 @@ struct Unpacker
         if (header == Format.NIL)
             value = null;
         else
-            rollback();
+            rollback(0, "nil", cast(Format)header);
 
         return this;
     }
@@ -1081,10 +1075,17 @@ struct Unpacker
      * Do rollback and throws exception.
      */
     @safe
-    void rollback(in size_t size = 0)
+    void rollback(in size_t size, in string reason)
     {
         offset_ -= size + Offset;
-        onInvalidType();
+        onInvalidType(reason);
+    }
+
+    @safe
+    void rollback(in size_t size, in string expected, in Format actual)
+    {
+        offset_ -= size + Offset;
+        onInvalidType(expected, actual);
     }
 }
 
@@ -1096,9 +1097,16 @@ private:
  * A callback for type-mismatched error in deserialization process.
  */
 @safe
-pure void onInvalidType()
+pure void onInvalidType(in string reason)
 {
-    throw new MessagePackException("Attempt to unpack with non-compatible type");
+    throw new MessagePackException("Attempt to unpack with non-compatible type: reason = " ~ reason);
+}
+
+@safe
+pure void onInvalidType(in string expected, in Format actual)
+{
+    import std.conv: text;
+    throw new MessagePackException(text("Attempt to unpack with non-compatible type: expected = ", expected, ", actual = ", actual));
 }
 
 
