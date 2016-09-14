@@ -2,7 +2,7 @@ language: d
 
 os:
   - linux
-  - mac
+  - osx
 
 d:
   - dmd
