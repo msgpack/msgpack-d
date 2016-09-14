@@ -3,7 +3,6 @@
 # MessagePack for D
 
 MessagePack is a binary-based JSON-like serialization library.
-
 MessagePack for D is a pure D implementation of MessagePack.
 
 # Features
