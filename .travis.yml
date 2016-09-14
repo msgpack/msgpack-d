@@ -1,5 +1,9 @@
 language: d
 
+os:
+  - linux
+  - osx
+
 d:
   - dmd
   - gdc
@@ -8,7 +12,7 @@ d:
 install:
 
 script:
-  - dub test --compiler=${DC}
+  - dub test --arch "x86_64"
 
 branches:
   only:
