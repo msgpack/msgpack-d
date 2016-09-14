@@ -10,7 +10,7 @@ MessagePack for D is a pure D implementation of MessagePack.
 
 * Small size and High performance
 * Zero copy serialization / deserialization
-* Stream deserializer / Direct-conversion deserializer
+* Streaming deserializer for non-contiguous IO situation
 * Supports D features (Ranges, Tuples, real type)
 
 Note: The `real` type is only supported in D.
@@ -20,7 +20,7 @@ Note that `Unpacker` will raise an exception if a loss of precision occurs.
 ## Current Limitations
 
 * No circular references support
-* if you use the LDC compiler you need at least version 0.15.2 beta2
+* If you want to use the LDC compiler, you need at least version 0.15.2 beta2
 
 # Install
 
