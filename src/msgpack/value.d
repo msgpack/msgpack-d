@@ -567,7 +567,7 @@ struct Value
             return false;
 
         return via.ext.type == other.type && via.ext.data == other.data;
-    } 
+    }
 
 
     @trusted
@@ -599,7 +599,7 @@ struct Value
                     ret ^= value.toHash();
                 }
                 return ret;
-            } catch assert(0);
+            } catch(Throwable) assert(0);
         }
     }
 }
