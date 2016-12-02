@@ -1132,9 +1132,13 @@ unittest
         mixin DefinePacker;
 
         try {
-            byte[] bins = new byte[0xffffffffUL + 1];
+            import core.stdc.stdlib;
+            auto len = 0xffffffffUL + 1;
+            auto bins = (cast(byte*)malloc(len))[0 .. len];
+            assert(bins);
+            scope(exit) free(bins.ptr);
             packer.pack(bins);
-            assert(false);
+            assert(false); //check it wasn't allowed
         } catch (MessagePackException e) {
         }
     }
