@@ -23,7 +23,7 @@ import std.container;
  *
  * packer.packArray(false, 100, 1e-10, null);
  *
- * stdout.rawWrite(packer.buffer.data);
+ * stdout.rawWrite(packer.stream.data);
  * -----
  *
  * NOTE:
