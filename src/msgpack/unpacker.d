@@ -510,8 +510,19 @@ struct Unpacker
         }
 
         // Raw bytes
-        static if (isByte!U || isSomeChar!U) {
+        static if (isByte!U || isSomeChar!U)
             auto length = beginRaw();
+        else
+            auto length = beginArray();
+
+        if(length > buffer_.length) {
+            import std.conv: text;
+            throw new MessagePackException(text("Invalid array size in byte stream: Length (", length,
+                                                ") is larger than internal buffer size (", buffer_.length, ")"));
+        }
+
+        // Raw bytes
+        static if (isByte!U || isSomeChar!U) {
             auto offset = calculateSize!(true)(length);
             if (length == 0)
                 return this;
@@ -531,7 +542,6 @@ struct Unpacker
             static if (isDynamicArray!T)
                 hasRaw_ = true;
         } else {
-            auto length = beginArray();
             if (length == 0)
                 return this;
 
@@ -1415,7 +1425,7 @@ unittest
             packer.stream.clear();
             packer.pack(c1);
             auto unpacker2 = Unpacker(packer.stream.data);
-            unpacker2.unpack(c3);            
+            unpacker2.unpack(c3);
             //unpack(pack(c1), c3);
             assert(c3.i == c1.i);
         }

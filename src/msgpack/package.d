@@ -206,7 +206,7 @@ unittest
 unittest
 {
     import std.typetuple;
-    
+
     // char types
     foreach (Type; TypeTuple!(char, wchar, dchar)) {
         foreach (i; [Type.init, Type.min, Type.max, cast(Type)'j']) {
@@ -223,6 +223,52 @@ unittest
     // ext type
     auto result = unpack(pack(ExtValue(7, [1,2,3,4])));
     assert(result == ExtValue(7, [1,2,3,4]));
+}
+
+unittest {
+    import std.exception: assertThrown;
+
+    struct Version {
+        int major= -1;
+        int minor = -1;
+    }
+
+    struct SubscriptionTopic {
+        string[] topicComponents;
+    }
+
+    struct SubscriptionSender
+    {
+        string hostName;
+        string biosName;
+    }
+
+    struct PubSubMessage {
+
+        enum Type {
+            publication,
+            subscribe,
+            unsubscribe,
+        }
+
+        Version version_;
+        Type type;
+        SubscriptionSender sender;
+        SubscriptionTopic topic;
+        string value;
+    }
+
+    ubyte[] bytes = [149, 146, 255, 255,   0, 146, 164, 104,
+                     111, 115, 116, 164,  98, 105, 111, 115,
+                     145, 221, 171, 105, 110, 116, 101, 114,
+                     101, 115, 116, 105, 110, 103, 165, 116,
+                     111, 112, 105,  99, 167, 112,  97, 121,
+                     108, 111,  97, 100, 158, 142, 210,  31,
+                     127,  81, 149, 125, 183, 108,  86,  17,
+                     100,  35, 168];
+
+    // should not throw OutOfMemoryError
+    assertThrown!MessagePackException(unpack!PubSubMessage(bytes));
 }
 
 
