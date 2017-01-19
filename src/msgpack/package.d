@@ -226,6 +226,8 @@ unittest
 }
 
 unittest {
+    import std.exception: assertThrown;
+
     struct Version {
         int major= -1;
         int minor = -1;
@@ -266,7 +268,7 @@ unittest {
                      100,  35, 168];
 
     // should not throw OutOfMemoryError
-    unpack!PubSubMessage(bytes);
+    assertThrown!MessagePackException(unpack!PubSubMessage(bytes));
 }
 
 
