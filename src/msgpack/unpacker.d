@@ -196,7 +196,7 @@ struct Unpacker
         if (0x00 <= header && header <= 0x7f) {
             value = cast(T)header;
         } else if (0xe0 <= header && header <= 0xff) {
-            value = -(cast(T)-header);
+            value = cast(T)cast(byte)header;
         } else {
             switch (header) {
             case Format.UINT8:
