@@ -9,10 +9,17 @@ d:
   - gdc
   - ldc
 
-install:
+addons:
+  apt:
+    packages:
+    - gcc-multilib
+
+env:
+  - ARCH=x86_64
+  - ARCH=x86
 
 script:
-  - dub test
+  - dub test --arch=$ARCH
 
 branches:
   only:
@@ -26,4 +33,6 @@ sudo: false
 matrix:
   allow_failures:
     - os: osx
-      d: gdc
+      d: gdc # not installed on travis
+    - os: osx
+      env: ARCH=x86 # not supported
