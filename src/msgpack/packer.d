@@ -1128,7 +1128,9 @@ unittest
             }
         }
     }
-    version(X86_64) { // larger spec size for string / binary
+
+    version (X86_64) // can't create a long enough array to trigger this on x86
+    { // larger spec size for string / binary
         mixin DefinePacker;
 
         try {
