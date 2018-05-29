@@ -1128,6 +1128,7 @@ unittest
             }
         }
     }
+
     version (X86_64) // can't create a long enough array to trigger this on x86
     { // larger spec size for string / binary
         mixin DefinePacker;
@@ -1136,7 +1137,7 @@ unittest
             // using malloc because - hopefully - this means we don't
             // actually physically allocate such a huge amount of memory
             import core.stdc.stdlib;
-            auto len = 0xffffffffUL + 1;
+	    auto len = 0xffffffffUL + 1;
             auto bins = (cast(byte*)malloc(len))[0 .. len];
             assert(bins);
             scope(exit) free(bins.ptr);
