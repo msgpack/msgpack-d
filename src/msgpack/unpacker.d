@@ -884,7 +884,7 @@ struct Unpacker
      *  is thrown if the lengths do not match.  If $(D data) is null, a new slice
      *  is returned.
      */
-    ref Unpacker unpackExt(ref byte type, ref ubyte[] data)
+    ref Unpacker unpackExt(ref byte type, ref ubyte[] data) return
     {
         import std.conv : text;
 
