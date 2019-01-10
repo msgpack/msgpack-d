@@ -694,7 +694,7 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
      * Returns:
      *  seld, i.e. for method chaining.
      */
-    ref PackerImpl packExt(in byte type, const ubyte[] data)
+    ref PackerImpl packExt(in byte type, const ubyte[] data) return
     {
         ref PackerImpl packExtFixed(int fmt)
         {
@@ -791,7 +791,7 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
      * Returns:
      *  self, i.e. for method chaining.
      */
-    ref PackerImpl beginArray(in size_t length)
+    ref PackerImpl beginArray(in size_t length) return
     {
         if (length < 16) {
             const ubyte temp = Format.ARRAY | cast(ubyte)length;
@@ -815,7 +815,7 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
 
 
     /// ditto
-    ref PackerImpl beginMap(in size_t length)
+    ref PackerImpl beginMap(in size_t length) return
     {
         if (length < 16) {
             const ubyte temp = Format.MAP | cast(ubyte)length;
@@ -842,7 +842,7 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
     /*
      * Serializes the nil value.
      */
-    ref PackerImpl packNil()
+    ref PackerImpl packNil() return
     {
         stream_.put(Format.NIL);
         return this;
@@ -864,7 +864,7 @@ alias PackerImpl!(Appender!(ubyte[])) Packer;  // should be pure struct?
  * Returns:
  *  a $(D Packer) object instantiated and initialized according to the arguments.
  */
-PackerImpl!(Stream) packer(Stream)(Stream stream, bool withFieldName = false)
+PackerImpl!(Stream) packer(Stream)(Stream stream, bool withFieldName = false) return
 {
     return typeof(return)(stream, withFieldName);
 }
@@ -1137,7 +1137,7 @@ unittest
             // using malloc because - hopefully - this means we don't
             // actually physically allocate such a huge amount of memory
             import core.stdc.stdlib;
-	    auto len = 0xffffffffUL + 1;
+            auto len = 0xffffffffUL + 1;
             auto bins = (cast(byte*)malloc(len))[0 .. len];
             assert(bins);
             scope(exit) free(bins.ptr);
