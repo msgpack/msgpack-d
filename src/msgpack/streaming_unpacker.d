@@ -257,7 +257,7 @@ struct StreamingUnpacker
      *  bufferSize = size limit of buffer size
      */
     @safe
-    this(in ubyte[] target, in size_t bufferSize = 8192)
+    this(const scope ubyte[] target, in size_t bufferSize = 8192)
     {
         initializeBuffer(target, bufferSize);
         initializeContext();

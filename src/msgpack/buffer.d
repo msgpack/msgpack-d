@@ -123,7 +123,7 @@ struct RefBuffer
 
     /// ditto
     @safe
-    void put(in ubyte[] value)
+    void put(const scope ubyte[] value)
     {
         if (value.length < Threshold)
             putCopy(value);
@@ -140,7 +140,7 @@ struct RefBuffer
      *  value = the content to write.
      */
     @trusted
-    void putRef(in ubyte[] value)
+    void putRef(const scope ubyte[] value)
     {
         vecList_.length += 1;
         vecList_[$ - 1]  = iovec(cast(void*)value.ptr, value.length);
@@ -154,7 +154,7 @@ struct RefBuffer
      *  value = the contents to write.
      */
     @trusted
-    void putCopy(in ubyte[] value)
+    void putCopy(const scope ubyte[] value)
     {
         /*
          * Helper for expanding new space.

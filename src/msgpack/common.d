@@ -453,7 +453,7 @@ version (D_Ddoc)
          * Params:
          *  target = new serialized buffer to deserialize.
          */
-        @safe void feed(in ubyte[] target);
+        @safe void feed(const scope ubyte[] target);
 
 
         /**
@@ -500,7 +500,7 @@ version (D_Ddoc)
 
     private:
         @safe
-        void initializeBuffer(in ubyte[] target, in size_t bufferSize = 8192);
+        void initializeBuffer(const scope ubyte[] target, in size_t bufferSize = 8192);
     }
 }
 else
@@ -524,7 +524,7 @@ else
 
 
         @safe
-        void feed(in ubyte[] target)
+        void feed(const scope ubyte[] target)
         in
         {
             assert(target.length);
@@ -621,7 +621,7 @@ else
 
       private:
         @safe
-        nothrow void initializeBuffer(in ubyte[] target, in size_t bufferSize = 8192)
+        nothrow void initializeBuffer(const scope ubyte[] target, in size_t bufferSize = 8192)
         {
             const size = target.length;
 

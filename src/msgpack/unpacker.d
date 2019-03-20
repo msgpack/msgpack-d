@@ -81,7 +81,7 @@ struct Unpacker
      *  target     = byte buffer to deserialize
      *  bufferSize = size limit of buffer size
      */
-    this(in ubyte[] target, in size_t bufferSize = 8192, bool withFieldName = false)
+    this(const scope ubyte[] target, in size_t bufferSize = 8192, bool withFieldName = false)
     {
         initializeBuffer(target, bufferSize);
         withFieldName_ = withFieldName;

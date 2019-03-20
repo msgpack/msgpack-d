@@ -83,7 +83,7 @@ ubyte[] pack(bool withFieldName = false, Args...)(in Args args)
  * Throws:
  *  UnpackException if deserialization doesn't succeed.
  */
-Unpacked unpack(in ubyte[] buffer)
+Unpacked unpack(const scope ubyte[] buffer)
 {
     auto unpacker = StreamingUnpacker(buffer);
 
@@ -104,7 +104,7 @@ Unpacked unpack(in ubyte[] buffer)
  *  buffer = the buffer to deserialize.
  *  args   = the references of values to assign.
  */
-void unpack(bool withFieldName = false, Args...)(in ubyte[] buffer, ref Args args)
+void unpack(bool withFieldName = false, Args...)(const scope ubyte[] buffer, ref Args args)
 {
     auto unpacker = Unpacker(buffer, buffer.length, withFieldName);
 
@@ -118,7 +118,7 @@ void unpack(bool withFieldName = false, Args...)(in ubyte[] buffer, ref Args arg
 /**
  * Return value version
  */
-Type unpack(Type, bool withFieldName = false)(in ubyte[] buffer)
+Type unpack(Type, bool withFieldName = false)(const scope ubyte[] buffer)
 {
     auto unpacker = Unpacker(buffer, buffer.length, withFieldName);
 
