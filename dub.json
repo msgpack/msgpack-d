@@ -8,5 +8,4 @@
 
     "importPaths": ["src"],
     "targetType":  "library",
-    "dflags": ["-dip25"]
 }
