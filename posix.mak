@@ -47,4 +47,4 @@ unittest:
 	rm $(MAIN_FILE)
 
 run_examples:
-	echo example/* | xargs -n 1 dmd src/msgpack/*.d $(DFLAGS) -Isrc -run
+	echo example/* | xargs -n 1 $(DMD) src/msgpack/*.d $(DFLAGS) -Isrc -run
