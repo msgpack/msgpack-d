@@ -6,7 +6,7 @@ ifeq (,$(DMD))
 endif
 
 LIB    = libmsgpack-d.a
-DFLAGS = -Isrc -m$(MODEL) -d -w
+DFLAGS = -Isrc -m$(MODEL) -d -w -dip25 -dip1000
 
 ifeq (true, $(EnableReal))
 	DFLAGS += -version=EnableReal

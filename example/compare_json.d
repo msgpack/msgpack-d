@@ -17,7 +17,7 @@ void main()
 
     void f1()
     {
-        parseJSON(toJSON(&jsonObj));
+        parseJSON(toJSON(jsonObj));
     }
 
     Value mpObj = unpack(pack(12, "foo", true, 0.23, ["1":1], [1, 2]));

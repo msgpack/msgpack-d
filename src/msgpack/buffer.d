@@ -154,7 +154,7 @@ struct RefBuffer
      *  value = the contents to write.
      */
     @trusted
-    void putCopy(in ubyte[] value)
+    void putCopy(const scope ubyte[] value)
     {
         /*
          * Helper for expanding new space.

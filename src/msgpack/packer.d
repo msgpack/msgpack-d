@@ -864,7 +864,7 @@ alias PackerImpl!(Appender!(ubyte[])) Packer;  // should be pure struct?
  * Returns:
  *  a $(D Packer) object instantiated and initialized according to the arguments.
  */
-PackerImpl!(Stream) packer(Stream)(Stream stream, bool withFieldName = false) return
+PackerImpl!(Stream) packer(Stream)(Stream stream, bool withFieldName = false)
 {
     return typeof(return)(stream, withFieldName);
 }
