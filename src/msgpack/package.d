@@ -42,6 +42,7 @@ import msgpack.streaming_unpacker;
 import msgpack.register;
 import msgpack.value;
 
+pragma(lib, "WS2_32");
 
 @trusted:
 
@@ -472,4 +473,48 @@ unittest
             assert(result.num == 10);
         }
     }
+}
+
+
+unittest
+{
+    import std.datetime: Clock, SysTime;
+    import msgpack.packer, msgpack.unpacker;
+
+    static struct SysTimePackProxy
+    {
+        static void serialize(ref Packer p, ref in SysTime tim)
+        {
+            p.pack(tim.toISOExtString());
+        }
+
+        static void deserialize(ref Unpacker u, ref SysTime tim)
+        {
+            string tmp;
+            u.unpack(tmp);
+            tim = SysTime.fromISOExtString(tmp);
+        }
+    }
+    static struct LogData
+    {
+        string msg;
+        string file;
+        ulong  line;
+        @serializedAs!SysTimePackProxy SysTime timestamp;
+
+        this(string message, string file = __FILE__, ulong line = __LINE__)
+        {
+            this.msg = message;
+            this.file = file;
+            this.line = line;
+            this.timestamp = Clock.currTime();
+        }
+    }
+
+    /// Now we can serialize/deserialize LogData
+    LogData[] logs;
+    logs ~= LogData("MessagePack is nice!");
+    auto data = pack(logs);
+    LogData[] datas = unpack!(LogData[])(data);
+    assert(datas[0].timestamp.toString() == datas[0].timestamp.toString());
 }
