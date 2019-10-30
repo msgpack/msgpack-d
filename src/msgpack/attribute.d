@@ -52,7 +52,14 @@ struct serializedAs(T){}
 package enum bool isSerializedAs(A) = is(A : serializedAs!T, T);
 package alias getSerializedAs(T : serializedAs!Proxy, Proxy) = Proxy;
 package alias ProxyList(alias value) = staticMap!(getSerializedAs, Filter!(isSerializedAs, __traits(getAttributes, value)));
-package enum bool isSerializedAs(alias value) = ProxyList!value.length > 0;
+package template isSerializedAs(alias value)
+{
+    static if ( __traits(compiles, __traits(getAttributes, value)) ) {
+        enum bool isSerializedAs = ProxyList!value.length > 0;
+    } else {
+        enum bool isSerializedAs = false;
+    }
+}
 package template getSerializedAs(alias value)
 {
     private alias _list = ProxyList!value;
@@ -77,8 +84,12 @@ unittest
     struct A
     {
         @serializedAs!Proxy int a;
+        @(42) int b;
+        @(42) @serializedAs!Proxy int c;
     }
     static assert(is(getSerializedAs!(A.a) == Proxy));
     static assert(isSerializedAs!(__traits(getAttributes, A.a)[0]));
     static assert(hasSerializedAs!(A.a));
+    static assert(!hasSerializedAs!(A.b));
+    static assert(hasSerializedAs!(A.c));
 }
