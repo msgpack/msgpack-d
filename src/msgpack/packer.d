@@ -570,16 +570,24 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
 
             if (withFieldName_) {
                 foreach (i, f; object.tupleof) {
-                    static if (isPackedField!(T.tupleof[i]) && __traits(compiles, { pack(f); }))
-                    {
+                    static if (isPackedField!(T.tupleof[i])) {
                         pack(getFieldName!(T, i));
-                        pack(f);
+                        static if (hasSerializedAs!(T.tupleof[i])) {
+                            alias Proxy = getSerializedAs!(T.tupleof[i]);
+                            Proxy.serialize(this, f);
+                        } else static if (__traits(compiles, { pack(f); }))
+                            pack(f);
                     }
                 }
             } else {
                 foreach (i, f; object.tupleof) {
-                    static if (isPackedField!(T.tupleof[i]) && __traits(compiles, { pack(f); }))
-                        pack(f);
+                    static if (isPackedField!(T.tupleof[i])) {
+                        static if (hasSerializedAs!(T.tupleof[i])) {
+                            alias Proxy = getSerializedAs!(T.tupleof[i]);
+                            Proxy.serialize(this, f);
+                        } else static if (__traits(compiles, { pack(f); }))
+                            pack(f);
+                    }
                 }
             }
         }
@@ -604,13 +612,24 @@ struct PackerImpl(Stream) if (isOutputRange!(Stream, ubyte) && isOutputRange!(St
                 foreach (i, f ; obj.tupleof) {
                     static if (isPackedField!(Class.tupleof[i])) {
                         pack(getFieldName!(Class, i));
-                        pack(f);
+                        static if (hasSerializedAs!(T.tupleof[i])) {
+                            alias Proxy = getSerializedAs!(T.tupleof[i]);
+                            Proxy.serialize(this, f);
+                        } else {
+                            pack(f);
+                        }
                     }
                 }
             } else {
                 foreach (i, f ; obj.tupleof) {
-                    static if (isPackedField!(Class.tupleof[i]))
-                        pack(f);
+                    static if (isPackedField!(Class.tupleof[i])) {
+                        static if (hasSerializedAs!(T.tupleof[i])) {
+                            alias Proxy = getSerializedAs!(T.tupleof[i]);
+                            Proxy.serialize(this, f);
+                        } else {
+                            pack(f);
+                        }
+                    }
                 }
             }
         }

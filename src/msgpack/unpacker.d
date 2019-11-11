@@ -687,7 +687,12 @@ struct Unpacker
                             unpack(fieldName);
 
                             if (fieldName == getFieldName!(T, i)) {
-                                unpack(object.tupleof[i]);
+                                static if (hasSerializedAs!(T.tupleof[i])) {
+                                    alias Proxy = getSerializedAs!(T.tupleof[i]);
+                                    Proxy.deserialize(this, object.tupleof[i]);
+                                } else {
+                                    unpack(object.tupleof[i]);
+                                }
                             } else {
                                 assert(false, "Invalid field name: '" ~ fieldName ~ "', expect '" ~ getFieldName!(T, i) ~ "'");
                             }
@@ -695,8 +700,14 @@ struct Unpacker
                     }
                 } else {
                     foreach (i, member; object.tupleof) {
-                        static if (isPackedField!(T.tupleof[i]))
-                            unpack(object.tupleof[i]);
+                        static if (isPackedField!(T.tupleof[i])) {
+                            static if (hasSerializedAs!(T.tupleof[i])) {
+                                alias Proxy = getSerializedAs!(T.tupleof[i]);
+                                Proxy.deserialize(this, object.tupleof[i]);
+                            } else {
+                                unpack(object.tupleof[i]);
+                            }
+                        }
                     }
                 }
             }
@@ -729,7 +740,12 @@ struct Unpacker
                         static if (isPackedField!(Class.tupleof[i]))
                         {
                             if (fieldName == getFieldName!(Class, i)) {
-                                unpack(obj.tupleof[i]);
+                                static if (hasSerializedAs!(Class.tupleof[i])) {
+                                    alias Proxy = getSerializedAs!(Class.tupleof[i]);
+                                    Proxy.deserialize(this, obj.tupleof[i]);
+                                } else {
+                                    unpack(obj.tupleof[i]);
+                                }
                                 goto endLoop;
                             }
                         }
@@ -745,8 +761,14 @@ struct Unpacker
                 Class obj = cast(Class)object;
 
                 foreach (i, member; obj.tupleof) {
-                    static if (isPackedField!(Class.tupleof[i]))
-                        unpack(obj.tupleof[i]);
+                    static if (isPackedField!(Class.tupleof[i])) {
+                        static if (hasSerializedAs!(Class.tupleof[i])) {
+                            alias Proxy = getSerializedAs!(Class.tupleof[i]);
+                            Proxy.deserialize(this, obj.tupleof[i]);
+                        } else {
+                            unpack(obj.tupleof[i]);
+                        }
+                    }
                 }
             }
         }
@@ -1352,6 +1374,45 @@ unittest
             }
         }
 
+        {
+            static struct SimpleProxy1
+            {
+                import std.conv;
+                static void serialize(ref Packer p, ref string val) { p.pack(to!uint(val)); }
+                static void deserialize(ref Unpacker u, ref string val) { uint tmp; u.unpack(tmp); val = to!string(tmp); }
+            }
+            static struct SimpleWithProxied1
+            {
+                @serializedAs!SimpleProxy1 string data;
+                enum string defaultValue = "10";
+            }
+
+            // https://github.com/msgpack/msgpack-d/issues/83
+            static struct SimpleProxy2
+            {
+                import std.datetime;
+                static void serialize(ref Packer p, ref SysTime val) { p.pack(val.toISOExtString()); }
+                static void deserialize(ref Unpacker u, ref SysTime val) { string tmp; u.unpack(tmp); val = SysTime.fromISOExtString(tmp); }
+            }
+            static struct SimpleWithProxied2
+            {
+                import std.datetime;
+                @serializedAs!SimpleProxy2 SysTime data;
+                static SysTime defaultValue() @property { return SysTime(DateTime(2019,1,1,0,0,0)); }
+            }
+            
+            foreach (Type; TypeTuple!(SimpleWithProxied1, SimpleWithProxied2)) {
+                mixin DefinePacker;
+                Type result, test;
+                test.data = Type.defaultValue;
+                
+                packer.pack(test);
+                auto unpacker = Unpacker(packer.stream.data);
+                unpacker.unpack(result);
+                assert(test.data == result.data);
+            }
+        }
+
         static class SimpleA
         {
             bool flag = true;
@@ -1374,8 +1435,26 @@ unittest
             uint num = uint.max;
         }
 
+        static class SimpleD
+        {
+            static struct Proxy
+            {
+                import std.conv;
+                static void serialize(ref Packer p, ref bool val)      { p.pack(to!string(val)); }
+                static void serialize(ref Packer p, ref uint val)      { p.pack(to!string(val)); }
+                static void serialize(ref Packer p, ref ubyte val)     { p.pack(to!string(val)); }
+                static void deserialize(ref Unpacker u, ref bool val)  { string tmp; u.unpack(tmp); val = to!bool(tmp); }
+                static void deserialize(ref Unpacker u, ref uint val)  { string tmp; u.unpack(tmp); val = to!uint(tmp); }
+                static void deserialize(ref Unpacker u, ref ubyte val) { string tmp; u.unpack(tmp); val = to!ubyte(tmp); }
+            }
+            @serializedAs!Proxy bool flag = true;
+            @serializedAs!Proxy ubyte type = 100;
+            @serializedAs!Proxy uint num = uint.max;
+            @nonPacked string str;
+        }
+
         { // from derived class
-            foreach (Type; TypeTuple!(SimpleC, SimpleC2)) {
+            foreach (Type; TypeTuple!(SimpleC, SimpleC2, SimpleD)) {
                 mixin DefinePacker;
                 Type result, test = new Type();
                 test.flag = false;
