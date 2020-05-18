@@ -42,7 +42,9 @@ import msgpack.streaming_unpacker;
 import msgpack.register;
 import msgpack.value;
 
-pragma(lib, "WS2_32");
+version(Windows) {
+    pragma(lib, "WS2_32");
+}
 
 @trusted:
 
