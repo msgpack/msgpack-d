@@ -874,7 +874,7 @@ unittest
     import std.array : array;
     import std.algorithm : equal, map;
     import std.conv;
-    import std.math : approxEqual;
+    import std.math : isClose;
     import std.range;
     import msgpack;
 
@@ -917,8 +917,8 @@ unittest
     assert(value.toJSONValue().type == JSONType.float_);
     assert(other.toJSONValue().type == JSONType.float_);
 
-    assert(approxEqual(value.toJSONValue().floating, 0.1e-10L));
-    assert(approxEqual(other.toJSONValue().floating, 0.1e-20L));
+    assert(isClose(value.toJSONValue().floating, 0.1e-10L));
+    assert(isClose(other.toJSONValue().floating, 0.1e-20L));
 
     // raw
     long[] arr = [72, 105, 33];
@@ -969,7 +969,7 @@ unittest
     assert(value.toJSONValue().type == JSONType.array);
     assert(value.toJSONValue().array.length == 2);
     assert(value.toJSONValue().array[0].type == JSONType.float_);
-    assert(approxEqual(value.toJSONValue().array[0].floating, simple.num));
+    assert(isClose(value.toJSONValue().array[0].floating, simple.num));
     assert(value.toJSONValue().array[1].type == JSONType.string);
     assert(value.toJSONValue().array[1].str == simple.msg);
 

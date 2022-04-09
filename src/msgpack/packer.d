@@ -13,6 +13,7 @@ import std.typecons;
 import std.typetuple;
 import std.container;
 
+version(unittest) void main() {}
 
 /**
  * $(D Packer) is a $(D MessagePack) serializer

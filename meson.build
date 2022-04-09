@@ -53,17 +53,10 @@ msgpack_dep = declare_dependency(
 #
 # Tests
 #
-if meson.get_compiler('d').get_id() == 'llvm'
-  extra_args = ['-main', '-link-defaultlib-shared']
-else
-  extra_args = ['-main']
-endif
-
 msgpack_test_exe = executable('test_msgpack',
     [msgpack_src],
     include_directories: [src_dir],
     d_unittest: true,
-    link_args: extra_args,
 )
 test('test_msgpack', msgpack_test_exe)
 
