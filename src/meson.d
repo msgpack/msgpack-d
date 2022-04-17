@@ -1,0 +1,3 @@
+version (meson) {
+   void main() {}
+}

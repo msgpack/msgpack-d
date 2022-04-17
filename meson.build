@@ -54,9 +54,10 @@ msgpack_dep = declare_dependency(
 # Tests
 #
 msgpack_test_exe = executable('test_msgpack',
-    [msgpack_src],
+    [msgpack_src, 'src/meson.d'],
     include_directories: [src_dir],
     d_unittest: true,
+    d_module_versions : ['meson']
 )
 test('test_msgpack', msgpack_test_exe)
 
