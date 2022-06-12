@@ -9,4 +9,4 @@ __test__*__
 *.dll
 *.sublime-project
 *.sublime-workspace
-
+msgpack-d-test-unittest
