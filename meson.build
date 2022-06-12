@@ -1,7 +1,7 @@
  project('msgpack-d', 'd',
     meson_version: '>=0.47',
     license: 'BSL-1.0',
-    version: '1.0.3'
+    version: '1.0.4'
 )
 
 project_soversion = '1'
