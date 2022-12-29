@@ -127,7 +127,7 @@ void main()
 
 In addition, here is also a method using `@serializedAs` attribute:
 
-```
+```d
 import std.datetime: Clock, SysTime;
 static struct SysTimePackProxy
 {
