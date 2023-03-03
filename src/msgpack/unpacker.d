@@ -15,7 +15,7 @@ import std.container;
 
 
 // for unpack without calling constructor
-private extern(C) Object _d_newclass(in ClassInfo);
+private extern(C) Object _d_newclass(const ClassInfo);
 
 
 /**
