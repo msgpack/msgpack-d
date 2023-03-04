@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/msgpack/msgpack-d.png)](https://travis-ci.org/msgpack/msgpack-d)
+[![CI](https://github.com/msgpack/msgpack-d/actions/workflows/d.yml/badge.svg)](https://github.com/msgpack/msgpack-d/actions/workflows/d.yml)
 
 # MessagePack for D
 
